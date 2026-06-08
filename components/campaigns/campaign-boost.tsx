@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useOnchain } from "@/components/providers/onchain-provider"
-import { useAccount } from "wagmi"
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
+import { X402_WALLET_ADDRESS } from "@/lib/stellar/config"
 import { 
   Zap, 
   Star, 
@@ -28,7 +29,7 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const { paymentStatus, makePayment, networkInfo, isReady, balance } = useOnchain()
-  const { isConnected, address } = useAccount()
+  const { isConnected, address } = useStellarWallet()
 
   const boostOptions = [
     {
@@ -67,7 +68,7 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
     }
 
     if (!isReady) {
-      setError("Please switch to Base network to make payments")
+      setError("Please connect your Freighter wallet to make payments")
       return
     }
 
@@ -83,7 +84,11 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
 
     try {
       // Process boost payment through Onchain Kit
-      const paymentResult = await makePayment(price, "0x0000000000000000000000000000000000000000", campaignId)
+      const recipient = X402_WALLET_ADDRESS
+      if (!recipient) {
+        throw new Error("Payment recipient not configured")
+      }
+      const paymentResult = await makePayment(price, recipient, campaignId)
       
       if (paymentStatus === "completed" && paymentResult?.txHash) {
         // Create boost record
@@ -120,7 +125,7 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
       } else if (error.message.includes("insufficient funds")) {
         errorMessage = "Insufficient USDC balance. Please check your wallet."
       } else if (error.message.includes("network")) {
-        errorMessage = "Please ensure you're connected to Base network."
+        errorMessage = "Please ensure your Freighter wallet is connected to Stellar."
       } else if (error.message.includes("wallet")) {
         errorMessage = "Wallet connection issue. Please reconnect your wallet."
       } else if (error.message) {
@@ -169,7 +174,7 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Please switch to Base network to make boost payments.
+                Please connect your Freighter wallet to make boost payments.
               </AlertDescription>
             </Alert>
           ) : (
@@ -244,14 +249,14 @@ export function CampaignBoost({ campaignId, currentBoost }: CampaignBoostProps) 
           </div>
 
           <div className="text-xs text-muted-foreground text-center space-y-1">
-            <p>Powered by Onchain Kit</p>
+            <p>Powered by Stellar blockchain</p>
             <a 
-              href="https://onchainkit.com/" 
+              href="https://www.freighter.app/" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-primary hover:underline"
             >
-              Learn more <ExternalLink className="h-3 w-3" />
+              Get Freighter <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         </CardContent>

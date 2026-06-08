@@ -3,60 +3,54 @@ import { notFound } from "next/navigation"
 import { CampaignDetailView } from "@/components/campaigns/campaign-detail-view"
 
 interface CampaignPageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export const dynamic = "force-dynamic"
 
 export default async function CampaignPage({ params }: CampaignPageProps) {
-  const campaignId = params.id
+  const { id: campaignId } = await params
 
-  // Fetch campaign with creator and contributions
   const campaignData = await prisma.campaign.findUnique({
-    where: {
-      id: campaignId,
-      status: "active"
-    },
+    where: { id: campaignId, status: "active" },
     include: {
       creator: true,
       campaign_updates: true,
-      contributions: {
-        include: {
-          contributor: true
-        },
-        orderBy: { created_at: 'desc' }
-      }
-    }
+      donations: {
+        include: { contributor: true },
+        orderBy: { created_at: "desc" },
+      },
+    },
   })
 
   if (!campaignData) {
-    console.error("Campaign not found or error")
     notFound()
   }
 
-  // Map to exclude Decimal and match expected UI types (mostly aliasing relations to "profiles")
   const campaign = {
     ...campaignData,
     current_amount: Number(campaignData.current_amount),
+    on_chain_balance: Number(campaignData.on_chain_balance),
     goal_amount: Number(campaignData.goal_amount),
-    profiles: campaignData.creator, // Alias for UI compatibility
-    contributions: campaignData.contributions.map(c => ({
-      ...c,
-      amount: Number(c.amount),
-      profiles: c.contributor // Alias for UI compatibility
+    deadline: campaignData.deadline?.toISOString(),
+    profiles: campaignData.creator,
+    donations: campaignData.donations.map((d) => ({
+      ...d,
+      amount: Number(d.amount),
+      tx_hash: d.tx_hash,
+      profiles: d.contributor,
     })),
-    campaign_updates: campaignData.campaign_updates.map(u => ({
+    contributions: campaignData.donations.map((d) => ({
+      ...d,
+      amount: Number(d.amount),
+      tx_hash: d.tx_hash,
+      profiles: d.contributor,
+    })),
+    campaign_updates: campaignData.campaign_updates.map((u) => ({
       ...u,
-      created_at: u.created_at.toISOString()
-    }))
+      created_at: u.created_at.toISOString(),
+    })),
   }
-
-  // Get current user for contribution permissions (Mock)
-  // In real app, check cookies/headers. For now, assume null or fetch a demo user if we want access.
-  // The UI connects to wallet so maybe user profile isn't strictly needed for view unless owning it.
-  // Let's assume no user logged in server-side for this view to keep it simple, 
-  // or checks local storage client-side. The prop is `currentUser`.
-  const currentUser = null
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -64,26 +58,21 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
         campaign={campaign as any}
         contributions={campaign.contributions}
         updates={campaign.campaign_updates || []}
-        currentUser={currentUser}
+        currentUser={null}
       />
     </div>
   )
 }
 
-// Generate metadata for the page
 export async function generateMetadata({ params }: CampaignPageProps) {
-  const campaignId = params.id
+  const { id: campaignId } = await params
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
-    select: { title: true, description: true, image_url: true }
+    select: { title: true, description: true, image_url: true },
   })
 
-  if (!campaign) {
-    return {
-      title: "Campaign Not Found",
-    }
-  }
+  if (!campaign) return { title: "Campaign Not Found" }
 
   return {
     title: `${campaign.title} - Thula Funds`,
@@ -94,4 +83,4 @@ export async function generateMetadata({ params }: CampaignPageProps) {
       images: campaign.image_url ? [campaign.image_url] : [],
     },
   }
-} 
+}

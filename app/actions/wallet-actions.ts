@@ -2,8 +2,8 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-
 import { createClient } from "@/lib/supabase/server"
+import { isValidStellarAddress, normalizeStellarAddress } from "@/lib/stellar/validation"
 
 export async function updateUserWallet(walletAddress: string) {
   try {
@@ -16,43 +16,38 @@ export async function updateUserWallet(walletAddress: string) {
       throw new Error("User not authenticated")
     }
 
-    // Validate wallet address format
     if (!walletAddress || typeof walletAddress !== "string") {
       throw new Error("Invalid wallet address")
     }
 
-    const cleanAddress = walletAddress.trim().toLowerCase()
+    const cleanAddress = normalizeStellarAddress(walletAddress)
 
-    if (!cleanAddress.startsWith("0x") || cleanAddress.length !== 42) {
-      throw new Error("Invalid wallet address format")
+    if (!isValidStellarAddress(cleanAddress)) {
+      throw new Error("Invalid Stellar wallet address format")
     }
 
     console.log("Updating profile for user:", user.id, "with wallet:", cleanAddress)
 
-    // Update user profile with wallet address
-    // Using upsert to ensure profile exists
     await prisma.profile.upsert({
       where: { id: user.id },
       update: {
         wallet_address: cleanAddress,
-        wallet_type: "coinbase_smart_wallet",
+        wallet_type: "freighter",
         wallet_verified: true,
         updated_at: new Date(),
       },
       create: {
         id: user.id,
         wallet_address: cleanAddress,
-        wallet_type: "coinbase_smart_wallet",
+        wallet_type: "freighter",
         wallet_verified: true,
         updated_at: new Date(),
-        // Add defaults for required fields if any (schema allows nulls mostly)
-        full_name: "Demo User"
-      }
+        full_name: "Demo User",
+      },
     })
 
     console.log("Wallet updated successfully")
 
-    // Revalidate paths
     try {
       revalidatePath("/dashboard")
       revalidatePath("/profile")
@@ -64,20 +59,19 @@ export async function updateUserWallet(walletAddress: string) {
     return { success: true, walletAddress: cleanAddress }
   } catch (error) {
     console.error("updateUserWallet error:", error)
-    throw error // Re-throw to be handled by caller
+    throw error
   }
 }
 
 export async function getUserWallet(userId: string) {
   try {
-    // For safety, might want to check auth matches userId, but for read we can just read.
     const profile = await prisma.profile.findUnique({
       where: { id: userId },
       select: {
         wallet_address: true,
         wallet_type: true,
-        wallet_verified: true
-      }
+        wallet_verified: true,
+      },
     })
 
     return profile || null
@@ -89,7 +83,6 @@ export async function getUserWallet(userId: string) {
 
 export async function validateWalletForPayments(walletAddress: string) {
   try {
-    // Basic validation
     if (!walletAddress || typeof walletAddress !== "string") {
       return {
         isValid: false,
@@ -98,20 +91,20 @@ export async function validateWalletForPayments(walletAddress: string) {
       }
     }
 
-    const cleanAddress = walletAddress.trim().toLowerCase()
+    const cleanAddress = normalizeStellarAddress(walletAddress)
 
-    if (!cleanAddress.startsWith("0x") || cleanAddress.length !== 42) {
+    if (!isValidStellarAddress(cleanAddress)) {
       return {
         isValid: false,
         canReceiveUSDC: false,
-        error: "Invalid wallet address format",
+        error: "Invalid Stellar wallet address format",
       }
     }
 
     return {
       isValid: true,
       canReceiveUSDC: true,
-      network: "base",
+      network: "stellar",
       address: cleanAddress,
     }
   } catch (error) {

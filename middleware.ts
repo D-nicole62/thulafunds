@@ -26,7 +26,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -81,7 +80,7 @@ export async function middleware(request: NextRequest) {
       response.headers.set("WWW-Authenticate", `Bearer realm="x402"`)
       response.headers.set("X-Accept-Payment", "USDC")
       response.headers.set("X-Payment-Amount", route.price.toString())
-      response.headers.set("X-Payment-Network", "base")
+      response.headers.set("X-Payment-Network", "stellar")
       response.headers.set("X-Payment-Address", process.env.X402_WALLET_ADDRESS || "")
       response.headers.set("X-Payment-Description", route.description)
       response.headers.set(

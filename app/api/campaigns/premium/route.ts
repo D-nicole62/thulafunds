@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       response.headers.set("WWW-Authenticate", `Bearer realm="x402"`)
       response.headers.set("X-Accept-Payment", "USDC")
       response.headers.set("X-Payment-Amount", "0.005")
-      response.headers.set("X-Payment-Network", "base")
+      response.headers.set("X-Payment-Network", "stellar")
       response.headers.set("X-Payment-Address", process.env.X402_WALLET_ADDRESS || "")
       return response
     }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
             avatar_url: true
           }
         },
-        contributions: {
+        donations: {
           select: {
             amount: true,
             created_at: true,
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const premiumCampaigns = campaigns.map((campaign) => {
       // Map Prisma 'creator' to Supabase 'profiles' shape for compatibility
       const { creator, ...rest } = campaign
-      const contributions = campaign.contributions || []
+      const contributions = campaign.donations || []
 
       const momentum = calculateMomentum(contributions)
       const trendingScore = calculateTrendingScore(campaign, contributions)
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
           optimal_contribution_time: getOptimalContributionTime(contributions),
           social_proof_score: calculateSocialProofScore(contributions),
           x402_payment_enabled: true,
-          network: "Base Mainnet",
+          network: "Stellar Mainnet",
         },
       }
     })
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         market_trends: await getMarketTrends(),
         success_factors: await getSuccessFactors(),
         payment_info: {
-          network: "Base Mainnet",
+          network: "Stellar Mainnet",
           currency: "USDC",
           facilitator: "https://facilitator.x402.org",
         },

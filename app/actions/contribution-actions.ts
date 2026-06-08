@@ -3,64 +3,47 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { indexDonationFromTx } from "@/lib/stellar/indexer"
 
-export async function createContribution(campaignId: string, amount: number, message?: string, anonymous?: boolean) {
+/** Record an on-chain donation after Soroban deposit() tx is confirmed */
+export async function recordDonation(
+  campaignId: string,
+  txHash: string,
+  amount: number,
+  message?: string,
+  anonymous?: boolean,
+) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
-    throw new Error("User not authenticated")
-  }
+  if (!user) throw new Error("User not authenticated")
 
-  try {
-    const contribution = await prisma.contribution.create({
-      data: {
-        campaign_id: campaignId,
-        contributor_id: user.id,
-        amount: amount,
-        message: message || null,
-        anonymous: anonymous || false
-      }
-    })
+  await indexDonationFromTx(campaignId, txHash, user.id, amount, message, anonymous)
 
-    revalidatePath("/dashboard")
-    revalidatePath("/campaigns")
-    revalidatePath(`/campaigns/${campaignId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/campaigns")
+  revalidatePath(`/campaigns/${campaignId}`)
 
-    return contribution
-
-  } catch (error) {
-    console.error("createContribution error:", error)
-    throw new Error("Failed to create contribution")
-  }
+  return prisma.donation.findUnique({ where: { tx_hash: txHash } })
 }
 
-export async function getContributionHistory(userId: string) {
-  try {
-    const contributions = await prisma.contribution.findMany({
-      where: { contributor_id: userId },
-      include: {
-        campaign: {
-          select: {
-            id: true,
-            title: true,
-            image_url: true
-          }
-        }
+export async function getDonationHistory(userId: string) {
+  const donations = await prisma.donation.findMany({
+    where: { contributor_id: userId },
+    include: {
+      campaign: {
+        select: { id: true, title: true, image_url: true },
       },
-      orderBy: { created_at: "desc" }
-    })
+    },
+    orderBy: { created_at: "desc" },
+  })
 
-    // Map relation to match previous structure (campaign -> campaigns)
-    return contributions.map(c => {
-      const { campaign, ...rest } = c;
-      return {
-        ...rest,
-        campaigns: campaign
-      }
-    })
-  } catch (error) {
-    console.error(error)
-    throw new Error("Failed to fetch contribution history")
-  }
+  return donations.map((d) => {
+    const { campaign, ...rest } = d
+    return { ...rest, amount: Number(rest.amount), campaigns: campaign }
+  })
 }
+
+/** @deprecated Use recordDonation */
+export const createContribution = recordDonation
+export const getContributionHistory = getDonationHistory

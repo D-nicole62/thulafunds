@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     // Check if session exists
     const existingSession = await prisma.paymentSession.findUnique({
-      where: { txHash: txHash }
+      where: { tx_hash: txHash }
     })
 
     if (existingSession) {

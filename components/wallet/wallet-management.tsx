@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useAccount } from "wagmi"
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
 import { useAuth } from "@/components/providers"
+import { isValidStellarAddress } from "@/lib/stellar/validation"
+import { getAccountExplorerUrl } from "@/lib/stellar/config"
 import { Wallet, Check, AlertTriangle, Copy, ExternalLink } from "lucide-react"
 import { getUserWallet, addWallet as addWalletAction, verifyWallet as verifyWalletAction, removeWallet as removeWalletAction } from "@/app/actions/wallet"
 
@@ -25,7 +27,7 @@ export function WalletManagement() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const { address: connectedWallet, isConnected } = useAccount()
+  const { address: connectedWallet, isConnected } = useStellarWallet()
   const { user } = useAuth()
 
   useEffect(() => {
@@ -43,18 +45,14 @@ export function WalletManagement() {
     }
   }
 
-  const validateWalletAddress = (address: string): boolean => {
-    return /^0x[a-fA-F0-9]{40}$/.test(address)
-  }
-
   const addWallet = async () => {
     if (!newWalletAddress.trim()) {
       setError("Please enter a wallet address")
       return
     }
 
-    if (!validateWalletAddress(newWalletAddress)) {
-      setError("Invalid wallet address format")
+    if (!isValidStellarAddress(newWalletAddress)) {
+      setError("Invalid Stellar wallet address format (must start with G)")
       return
     }
 
@@ -68,14 +66,13 @@ export function WalletManagement() {
     setSuccess(null)
 
     try {
-      // Check if wallet already exists
-      const existingWallet = wallets.find(w => w.address.toLowerCase() === newWalletAddress.toLowerCase())
+      const existingWallet = wallets.find((w) => w.address === newWalletAddress.trim())
       if (existingWallet) {
         setError("This wallet address is already added")
         return
       }
 
-      const result = await addWalletAction(user.id, newWalletAddress)
+      const result = await addWalletAction(user.id, newWalletAddress.trim())
 
       if (result.error) {
         throw new Error(result.error)
@@ -84,15 +81,15 @@ export function WalletManagement() {
       setSuccess("Wallet added successfully!")
       setNewWalletAddress("")
       await loadUserWallets()
-    } catch (error: any) {
-      setError(error.message || "Failed to add wallet")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to add wallet")
     } finally {
       setLoading(false)
     }
   }
 
   const verifyWallet = async (address: string) => {
-    if (!connectedWallet || address.toLowerCase() !== connectedWallet.toLowerCase()) {
+    if (!connectedWallet || address !== connectedWallet) {
       setError("Please connect the wallet you want to verify")
       return
     }
@@ -105,8 +102,8 @@ export function WalletManagement() {
 
       setSuccess("Wallet verified successfully!")
       await loadUserWallets()
-    } catch (error: any) {
-      setError(error.message || "Failed to verify wallet")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to verify wallet")
     } finally {
       setLoading(false)
     }
@@ -117,14 +114,14 @@ export function WalletManagement() {
 
     setLoading(true)
     try {
-      const result = await removeWalletAction(user!.id)
+      const result = await removeWalletAction(user.id)
 
       if (result.error) throw new Error(result.error)
 
       setSuccess("Wallet removed successfully!")
       await loadUserWallets()
-    } catch (error: any) {
-      setError(error.message || "Failed to remove wallet")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to remove wallet")
     } finally {
       setLoading(false)
     }
@@ -145,7 +142,7 @@ export function WalletManagement() {
             Wallet Management
           </CardTitle>
           <p className="text-sm text-gray-600">
-            Manage your receiving wallet addresses for campaign contributions and x402 payments.
+            Manage your Stellar receiving wallet addresses for campaign contributions and x402 payments.
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -163,21 +160,20 @@ export function WalletManagement() {
             </Alert>
           )}
 
-          {/* Add New Wallet */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Add Receiving Wallet</h3>
             <div className="space-y-3">
               <div>
-                <Label htmlFor="wallet-address">Wallet Address</Label>
+                <Label htmlFor="wallet-address">Stellar Wallet Address</Label>
                 <Input
                   id="wallet-address"
-                  placeholder="0x..."
+                  placeholder="G..."
                   value={newWalletAddress}
                   onChange={(e) => setNewWalletAddress(e.target.value)}
                   disabled={loading}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  This address will receive USDC payments from your campaigns
+                  This address will receive USDC payments from your campaigns on Stellar
                 </p>
               </div>
               <Button
@@ -190,14 +186,13 @@ export function WalletManagement() {
             </div>
           </div>
 
-          {/* Current Wallets */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Your Wallets</h3>
             {wallets.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No wallets added yet</p>
-                <p className="text-sm">Add a wallet address to receive payments</p>
+                <p className="text-sm">Add a Stellar wallet address to receive payments</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -236,10 +231,10 @@ export function WalletManagement() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => window.open(`https://basescan.org/address/${wallet.address}`, '_blank')}
+                            onClick={() => window.open(getAccountExplorerUrl(wallet.address), "_blank")}
                           >
                             <ExternalLink className="w-4 h-4 mr-1" />
-                            View on Basescan
+                            View on Stellar Expert
                           </Button>
                         </div>
                       </div>
@@ -271,7 +266,6 @@ export function WalletManagement() {
             )}
           </div>
 
-          {/* Connected Wallet Info */}
           {isConnected && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-semibold text-blue-900 mb-2">Connected Wallet</h4>

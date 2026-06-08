@@ -13,7 +13,7 @@ interface RecentContributionsProps {
 export async function RecentContributions({ userId }: RecentContributionsProps) {
   try {
     // Get contributions made by the user
-    const contributions = await prisma.contribution.findMany({
+    const contributions = await prisma.donation.findMany({
       where: { contributor_id: userId },
       select: {
         id: true,
@@ -41,7 +41,7 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
     })
 
     // Get contributions received on user's campaigns
-    const receivedContributions = await prisma.contribution.findMany({
+    const receivedContributions = await prisma.donation.findMany({
       where: {
         campaign: {
           creator_id: userId,

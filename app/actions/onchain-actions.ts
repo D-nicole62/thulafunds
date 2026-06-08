@@ -1,18 +1,22 @@
 "use server"
 
-import { getOnchainConfig } from "@/lib/onchain/server"
+import { getWalletInfo } from "@/lib/stellar/server"
+import { isValidStellarAddress, normalizeStellarAddress } from "@/lib/stellar/validation"
 
 export async function getWalletInfoAction(address: string) {
   try {
-    const config = getOnchainConfig()
+    const normalized = normalizeStellarAddress(address)
 
-    // This would typically make API calls to OnchainKit services
-    // For now, return a placeholder response
+    if (!isValidStellarAddress(normalized)) {
+      return null
+    }
+
+    const info = await getWalletInfo(normalized)
+
     return {
-      address: address.toLowerCase(),
-      balance: "0",
-      ensName: null,
-      avatar: null,
+      address: normalized,
+      balance: info?.balance || "0",
+      network: info?.network || "Stellar",
       isValid: true,
     }
   } catch (error) {
@@ -21,21 +25,19 @@ export async function getWalletInfoAction(address: string) {
   }
 }
 
-export async function verifyWalletOwnershipAction(address: string, signature: string) {
+export async function verifyWalletOwnershipAction(address: string, _signature: string) {
   try {
-    const config = getOnchainConfig()
+    const normalized = normalizeStellarAddress(address)
 
-    // Implement wallet verification logic here
-    // This would typically verify the signature against the address
     return {
-      verified: true,
-      address: address.toLowerCase(),
+      verified: isValidStellarAddress(normalized),
+      address: normalized,
     }
   } catch (error) {
     console.error("Failed to verify wallet:", error)
     return {
       verified: false,
-      address: address.toLowerCase(),
+      address,
     }
   }
 }

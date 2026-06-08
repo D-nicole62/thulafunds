@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
 import { Wallet, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 
 interface WalletConnectProps {
@@ -11,46 +12,31 @@ interface WalletConnectProps {
 
 export function WalletConnect({ onConnect }: WalletConnectProps) {
   const [isConnecting, setIsConnecting] = useState(false)
-  const [connectedAddress, setConnectedAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const { address, isConnected, connectWallet, disconnectWallet } = useStellarWallet()
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  const connectWallet = async () => {
+  useEffect(() => {
+    if (address) {
+      onConnect?.(address)
+    }
+  }, [address, onConnect])
+
+  const handleConnect = async () => {
     setIsConnecting(true)
     setError(null)
 
     try {
-      // Check if wallet is available
-      if (typeof window === "undefined" || typeof window.ethereum === "undefined") {
-        throw new Error("Please install a Web3 wallet like MetaMask or use Coinbase Wallet")
-      }
-
-      // Request account access
-      const accounts = await window.ethereum.request({
-        method: "eth_requestAccounts",
-      })
-
-      if (accounts.length === 0) {
-        throw new Error("No accounts found")
-      }
-
-      const address = accounts[0]
-      setConnectedAddress(address)
-      onConnect?.(address)
-    } catch (error: any) {
-      setError(error.message || "Failed to connect wallet")
+      await connectWallet()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to connect wallet")
     } finally {
       setIsConnecting(false)
     }
-  }
-
-  const disconnectWallet = () => {
-    setConnectedAddress(null)
-    setError(null)
   }
 
   if (!mounted) {
@@ -71,7 +57,7 @@ export function WalletConnect({ onConnect }: WalletConnectProps) {
     )
   }
 
-  if (connectedAddress) {
+  if (isConnected && address) {
     return (
       <Card className="border-green-200 bg-green-50">
         <CardHeader className="pb-3">
@@ -82,7 +68,7 @@ export function WalletConnect({ onConnect }: WalletConnectProps) {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="font-mono text-sm bg-white p-2 rounded border">
-            {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
+            {address.slice(0, 6)}...{address.slice(-4)}
           </div>
           <Button onClick={disconnectWallet} variant="outline" size="sm" className="w-full bg-transparent">
             Disconnect
@@ -102,7 +88,7 @@ export function WalletConnect({ onConnect }: WalletConnectProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Connect your Web3 wallet to enable crypto payments and onchain features.
+          Connect your Freighter wallet to enable USDC payments on Stellar.
         </p>
 
         {error && (
@@ -112,7 +98,7 @@ export function WalletConnect({ onConnect }: WalletConnectProps) {
           </div>
         )}
 
-        <Button onClick={connectWallet} disabled={isConnecting} className="w-full">
+        <Button onClick={handleConnect} disabled={isConnecting} className="w-full">
           {isConnecting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -121,13 +107,13 @@ export function WalletConnect({ onConnect }: WalletConnectProps) {
           ) : (
             <>
               <Wallet className="mr-2 h-4 w-4" />
-              Connect Wallet
+              Connect Freighter Wallet
             </>
           )}
         </Button>
 
         <div className="text-xs text-muted-foreground text-center">
-          Supports MetaMask, Coinbase Wallet, and other Web3 wallets
+          Requires the Freighter browser extension
         </div>
       </CardContent>
     </Card>

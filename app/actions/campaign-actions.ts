@@ -77,9 +77,10 @@ export async function createCampaignAction(formData: FormData) {
     if (!category) return { error: "Category is required", success: false }
     if (!walletAddress) return { error: "Wallet address is required", success: false }
 
-    // Validate wallet address format
-    if (!walletAddress.startsWith("0x") || walletAddress.length !== 42) {
-      return { error: "Invalid wallet address format", success: false }
+    const { isValidStellarAddress, normalizeStellarAddress } = await import("@/lib/stellar/validation")
+    const normalizedWallet = normalizeStellarAddress(walletAddress)
+    if (!isValidStellarAddress(normalizedWallet)) {
+      return { error: "Invalid Stellar wallet address format", success: false }
     }
 
     // Validate and parse goal amount
@@ -113,8 +114,8 @@ export async function createCampaignAction(formData: FormData) {
           goal_amount: goalAmountNum,
           category,
           image_url: imageUrl || null,
-          wallet_address: walletAddress.toLowerCase(),
-          payment_method: "x402_usdc",
+          wallet_address: normalizedWallet,
+          payment_method: "soroban_escrow",
           creator_id: user.id,
           status: "active",
           current_amount: 0,
@@ -141,8 +142,8 @@ export async function createCampaignAction(formData: FormData) {
       await prisma.profile.update({
         where: { id: user.id },
         data: {
-          wallet_address: walletAddress.toLowerCase(),
-          wallet_type: "coinbase_smart_wallet",
+          wallet_address: normalizedWallet,
+          wallet_type: "freighter",
           wallet_verified: true,
           updated_at: new Date(),
         }

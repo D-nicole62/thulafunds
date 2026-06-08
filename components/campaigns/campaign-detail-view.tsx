@@ -5,6 +5,7 @@ import { CampaignHeader } from "./campaign-header"
 import { CampaignProgress } from "./campaign-progress"
 import { CampaignCreator } from "./campaign-creator"
 import { CampaignPaymentInfo } from "./campaign-payment-info"
+import { SorobanActions } from "./soroban-actions"
 import { ContributionForm } from "./contribution-form"
 import { RecentContributions } from "./recent-contributions"
 import { CampaignUpdates } from "./campaign-updates"
@@ -72,10 +73,13 @@ export function CampaignDetailView({
               <CardContent>
                 <CampaignProgress 
                   campaign={{
+                    id: campaign.id,
                     current_amount: campaign.current_amount,
                     goal_amount: campaign.goal_amount,
-                    contributions: campaign.contributions || [],
-                    created_at: campaign.created_at
+                    contract_address: campaign.contract_address,
+                    deadline: campaign.deadline,
+                    donations: campaign.donations || campaign.contributions || [],
+                    created_at: campaign.created_at,
                   }}
                   onContributeAction={() => setShowContributionForm(true)}
                 />
@@ -91,7 +95,14 @@ export function CampaignDetailView({
               </CardContent>
             </Card>
 
-            <CampaignPaymentInfo walletAddress={campaign.wallet_address} />
+            <CampaignPaymentInfo walletAddress={campaign.contract_address || campaign.wallet_address} />
+
+            {campaign.contract_address && (
+              <SorobanActions
+                contractAddress={campaign.contract_address}
+                isOrganizer={currentUser?.id === campaign.creator_id}
+              />
+            )}
           </div>
         </div>
       </div>

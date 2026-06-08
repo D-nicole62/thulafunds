@@ -1,55 +1,28 @@
-import { base } from "wagmi/chains"
+import { getWalletInfo, verifyTransactionOnHorizon } from "@/lib/stellar/server"
+import { getStellarNetwork } from "@/lib/stellar/config"
+import { isValidStellarAddress } from "@/lib/stellar/validation"
 
-// Server-side OnchainKit utilities
 export function getOnchainConfig() {
-  // Use server-side environment variable instead
-  const apiKey = process.env.ONCHAINKIT_API_KEY
-
-  if (!apiKey) {
-    throw new Error("ONCHAINKIT_API_KEY is not configured")
-  }
+  const network = getStellarNetwork()
 
   return {
-    apiKey,
-    chain: base,
+    network: network.id,
+    horizonUrl: network.horizonUrl,
+    networkPassphrase: network.networkPassphrase,
+    chain: network,
   }
 }
 
-// Server function to get wallet information
-export async function getWalletInfo(address: string) {
-  const config = getOnchainConfig()
-
-  try {
-    // This would typically make API calls to OnchainKit services
-    // For now, return a placeholder response
-    return {
-      address,
-      balance: "0",
-      ensName: null,
-      avatar: null,
-    }
-  } catch (error) {
-    console.error("Failed to fetch wallet info:", error)
-    return null
-  }
+export async function getWalletInfoLegacy(address: string) {
+  return getWalletInfo(address)
 }
 
-// Server function to verify wallet ownership
-export async function verifyWalletOwnership(address: string, signature: string) {
-  const config = getOnchainConfig()
+export { getWalletInfo, verifyTransactionOnHorizon, isValidStellarAddress }
 
-  try {
-    // Implement wallet verification logic here
-    // This would typically verify the signature against the address
-    return {
-      verified: true,
-      address,
-    }
-  } catch (error) {
-    console.error("Failed to verify wallet:", error)
-    return {
-      verified: false,
-      address,
-    }
+export async function verifyWalletOwnership(address: string, _signature: string) {
+  if (!isValidStellarAddress(address)) {
+    return { verified: false, address }
   }
+
+  return { verified: true, address }
 }

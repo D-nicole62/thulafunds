@@ -18,7 +18,7 @@ export async function DashboardStats({ userId }: DashboardStatsProps) {
     })
 
     // Fetch contributions made by user
-    const contributions = await prisma.contribution.findMany({
+    const contributions = await prisma.donation.findMany({
       where: { contributor_id: userId },
       select: {
         amount: true,

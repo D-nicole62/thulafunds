@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SmartWalletConnect } from "@/components/web3/smart-wallet-connect"
+import { isValidStellarAddress } from "@/lib/stellar/validation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle, AlertTriangle, Wallet, Loader2, Plus } from "lucide-react"
 import { useAuth } from "@/components/providers"
@@ -62,7 +63,7 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
   }
 
   const validateWalletAddress = (address: string): boolean => {
-    return /^0x[a-fA-F0-9]{40}$/.test(address)
+    return isValidStellarAddress(address)
   }
 
   const handleWalletSelect = (address: string) => {
@@ -183,7 +184,7 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
           <Label htmlFor="new-wallet">New Wallet Address</Label>
           <Input
             id="new-wallet"
-            placeholder="0x..."
+            placeholder="G..."
             value={newWalletAddress}
             onChange={(e) => setNewWalletAddress(e.target.value)}
             disabled={loading}
@@ -232,7 +233,7 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
               <span className="font-medium">Wallet Setup Complete</span>
             </div>
             <p className="text-sm text-green-700 mt-1">
-              Your campaign will receive USDC payments at this address through Onchain Kit
+              Your campaign will receive USDC payments at this address on Stellar
             </p>
             <p className="text-xs text-green-600 mt-2 font-mono bg-green-100 p-2 rounded">
               {walletAddress}

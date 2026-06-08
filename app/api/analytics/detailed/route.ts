@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       response.headers.set("WWW-Authenticate", `Bearer realm="x402"`)
       response.headers.set("X-Accept-Payment", "USDC")
       response.headers.set("X-Payment-Amount", "0.01")
-      response.headers.set("X-Payment-Network", "base")
+      response.headers.set("X-Payment-Network", "stellar")
       response.headers.set("X-Payment-Address", process.env.X402_WALLET_ADDRESS || "")
       return response
     }
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
-        contributions: {
+        donations: {
           select: {
             amount: true,
             created_at: true,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate detailed metrics
-    const contributions = campaign.contributions || []
+    const contributions = campaign.donations || []
     const dailyContributions = contributions.reduce((acc: any, contrib: any) => {
       const date = new Date(contrib.created_at).toISOString().split("T")[0]
       acc[date] = (acc[date] || 0) + Number(contrib.amount)
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       growth_rate: calculateGrowthRate(contributions),
       projected_completion: calculateProjectedCompletion(campaign, contributions),
       payment_info: {
-        network: "Base Mainnet",
+        network: "Stellar Mainnet",
         currency: "USDC",
         verified: true,
         session: verification.proof || {},

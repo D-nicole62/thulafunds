@@ -11,8 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { createContribution } from "@/app/actions/contribution-actions"
 import { useToast } from "@/hooks/use-toast"
 import { useOnchain } from "@/components/providers/onchain-provider"
-import { useAccount, useSwitchChain } from "wagmi"
-import { base } from "wagmi/chains"
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
+import { isValidStellarAddress } from "@/lib/stellar/validation"
 import { 
   X, 
   DollarSign, 
@@ -36,9 +36,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [transactionStatus, setTransactionStatus] = useState<"pending" | "completed">("completed")
   
   const { toast } = useToast()
-  const { paymentStatus, makePayment, networkInfo, isReady, error: onchainError, balance } = useOnchain()
-  const { address, isConnected, chain } = useAccount()
-  const { switchChain } = useSwitchChain()
+  const { paymentStatus, deposit, networkInfo, isReady, error: onchainError, balance } = useOnchain()
+  const { address, isConnected, connectWallet } = useStellarWallet()
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -49,23 +48,15 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     }).format(amount)
   }
 
-  const connectWallet = async () => {
+  const handleConnectWallet = async () => {
     try {
-      setError("") // Clear any previous errors
+      setError("")
       if (!isConnected) {
-        // Trigger wallet connection
-        if (typeof window !== "undefined" && window.ethereum) {
-          await window.ethereum.request({ method: "eth_requestAccounts" })
-        }
+        await connectWallet()
       }
-      
-      if (chain?.id !== base.id) {
-        await switchChain({ chainId: base.id })
-      }
-      
       setStep("payment")
-    } catch (error: any) {
-      setError(error.message || "Failed to connect wallet")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to connect wallet")
     }
   }
 
@@ -94,13 +85,12 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   const processPayment = async () => {
     if (!isReady || !address) {
-      setError("Wallet not connected or not on Base network")
+      setError("Wallet not connected. Please connect your Freighter wallet.")
       return
     }
 
-    // Validate campaign wallet address
-    if (!campaign.wallet_address || !campaign.wallet_address.startsWith("0x") || campaign.wallet_address.length !== 42) {
-      setError("This campaign has an invalid wallet address. Please contact the campaign creator.")
+    if (!campaign.contract_address) {
+      setError("This campaign has no Soroban escrow contract. Please contact the organizer.")
       return
     }
 
@@ -108,28 +98,15 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     setError("")
 
     try {
-      // Process payment through Onchain Kit
-      const paymentResult = await makePayment(amount, campaign.wallet_address || "", campaign.id)
-      
-      // Handle different payment statuses
+      const paymentResult = await deposit(amount, campaign.contract_address, campaign.id)
+
       if (paymentResult?.txHash) {
-        const isPending = paymentResult.status === "pending" || paymentResult.txHash.startsWith("pending_")
-        
-        // Create contribution record with payment verification
         const response = await fetch(`/api/campaigns/${campaign.id}/contribute`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-payment-session": JSON.stringify({
-              amount: Number(amount),
-              endpoint: `/api/campaigns/${campaign.id}/contribute`,
-              txHash: paymentResult.txHash,
-              timestamp: Date.now(),
-              recipient: campaign.wallet_address,
-              status: paymentResult.status || "pending",
-            }),
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            txHash: paymentResult.txHash,
+            amount: Number(amount),
             message: message.trim() || undefined,
             anonymous,
           }),
@@ -140,19 +117,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           throw new Error(errorData.error || "Failed to create contribution record")
         }
 
-        if (isPending) {
-          setTransactionStatus("pending")
-          toast({
-            title: "Transaction Submitted!",
-            description: `Your $${Number(amount).toFixed(2)} contribution has been submitted. The transaction is being processed on the blockchain.`,
-          })
-        } else {
-          setTransactionStatus("completed")
-          toast({
-            title: "Contribution submitted!",
-            description: `Your $${Number(amount).toFixed(2)} contribution to "${campaign.title}" has been submitted. Transaction: ${paymentResult.txHash.slice(0, 8)}...`,
-          })
-        }
+        setTransactionStatus("completed")
+        toast({
+          title: "Donation confirmed on Stellar!",
+          description: `Your $${Number(amount).toFixed(2)} USDC is held in Soroban escrow. Tx: ${paymentResult.txHash.slice(0, 8)}...`,
+        })
 
         setStep("success")
       } else {
@@ -182,7 +151,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         errorMessage = "Insufficient USDC balance. Please check your wallet."
       } else if (error.message.includes("network") ||
                  error.message.includes("chain")) {
-        errorMessage = "Please ensure you're connected to Base network."
+        errorMessage = "Please connect your Stellar wallet (Freighter, Albedo, or xBull)."
       } else if (error.message.includes("wallet") ||
                  error.message.includes("connection")) {
         errorMessage = "Wallet connection issue. Please reconnect your wallet."
@@ -300,7 +269,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             <div>
               <h3 className="font-semibold mb-2">Connect Your Wallet</h3>
               <p className="text-sm text-muted-foreground">
-                Connect your Web3 wallet to contribute using USDC on Base network.
+                Connect your Stellar wallet to donate USDC into on-chain Soroban escrow.
               </p>
             </div>
           </div>
@@ -313,13 +282,9 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           )}
 
           {!isConnected ? (
-            <Button onClick={connectWallet} className="w-full" size="lg">
+            <Button onClick={handleConnectWallet} className="w-full" size="lg">
               <Wallet className="mr-2 h-4 w-4" />
-              Connect Wallet
-            </Button>
-          ) : chain?.id !== base.id ? (
-            <Button onClick={() => switchChain({ chainId: base.id })} className="w-full" size="lg">
-              Switch to Base Network
+              Connect Freighter Wallet
             </Button>
           ) : (
             <div className="space-y-3">
@@ -344,7 +309,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           )}
 
           <div className="text-xs text-muted-foreground text-center">
-            <p>Payment will be processed using USDC on Base network</p>
+            <p>Donation held in Soroban escrow until goal met or deadline</p>
             <p>No platform fees • Instant transfers</p>
           </div>
         </CardContent>
@@ -377,7 +342,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             </div>
             <div className="flex justify-between">
               <span>Network:</span>
-              <span className="text-sm text-muted-foreground">Base Mainnet</span>
+              <span className="text-sm text-muted-foreground">{networkInfo.name}</span>
             </div>
             <div className="flex justify-between">
               <span>Currency:</span>
@@ -408,7 +373,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
                   <div className="text-sm text-destructive/80">
                     <p>• Check your wallet popup and approve the transaction</p>
                     <p>• Make sure you have enough USDC balance</p>
-                    <p>• Ensure you're connected to Base network</p>
+                    <p>• Ensure your Freighter wallet is connected</p>
                   </div>
                 ) : null}
                 <Button 
@@ -452,14 +417,14 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               <p>• Review the transaction details carefully</p>
               <p>• Make sure you have enough USDC balance</p>
             </div>
-            <p>Powered by Onchain Kit</p>
+            <p>Funds secured by Stellar Soroban smart contract</p>
             <a 
-              href="https://onchainkit.com/" 
+              href="https://www.freighter.app/" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-primary hover:underline"
             >
-              Learn more <ExternalLink className="h-3 w-3" />
+              Get Freighter <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         </CardContent>

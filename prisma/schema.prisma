@@ -9,41 +9,45 @@ datasource db {
 }
 
 model Profile {
-  id              String         @id @default(uuid())
+  id              String    @id @default(uuid())
   full_name       String?
   avatar_url      String?
-  bio             String?        @db.Text
+  bio             String?   @db.Text
   wallet_address  String?
   wallet_type     String?
-  wallet_verified Boolean        @default(false)
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @default(now())
+  wallet_verified Boolean   @default(false)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now())
   campaigns       Campaign[]
-  contributions   Contribution[]
+  donations       Donation[]
 
   @@map("profiles")
 }
 
 model Campaign {
-  id               String           @id @default(uuid())
-  created_at       DateTime         @default(now())
-  updated_at       DateTime         @default(now())
-  title            String
-  description      String?          @db.Text
-  current_amount   Decimal          @default(0) @db.Decimal(15, 2)
-  goal_amount      Decimal          @db.Decimal(15, 2)
-  status           String           @default("active")
-  category         String?
-  image_url        String?          @db.Text
-  wallet_address   String?
-  payment_method   String?
-  creator_id       String
-  creator          Profile          @relation(fields: [creator_id], references: [id])
-  contributions    Contribution[]
-  campaign_updates CampaignUpdate[]
-  
-  // Boost fields
-  is_boosted       Boolean          @default(false)
+  id                         String           @id @default(uuid())
+  created_at                 DateTime         @default(now())
+  updated_at                 DateTime         @default(now())
+  title                      String
+  description                String?          @db.Text
+  current_amount             Decimal          @default(0) @db.Decimal(15, 2)
+  on_chain_balance           Decimal          @default(0) @db.Decimal(15, 2)
+  goal_amount                Decimal          @db.Decimal(15, 2)
+  status                     String           @default("active")
+  category                   String?
+  image_url                  String?          @db.Text
+  wallet_address             String?
+  contract_address           String?
+  milestone_contract_address String?
+  payment_method             String?
+  deadline                   DateTime?
+  creator_id                 String
+  creator                    Profile          @relation(fields: [creator_id], references: [id])
+  donations                  Donation[]
+  campaign_updates           CampaignUpdate[]
+  milestones                 Milestone[]
+
+  is_boosted       Boolean         @default(false)
   boost_type       String?
   boost_expires_at DateTime?
   boosts           CampaignBoost[]
@@ -76,18 +80,35 @@ model CampaignBoost {
   @@map("campaign_boosts")
 }
 
-model Contribution {
+/// On-chain donations — every financial action stores a Stellar tx hash
+model Donation {
   id             String   @id @default(uuid())
   created_at     DateTime @default(now())
   amount         Decimal  @db.Decimal(15, 2)
   message        String?  @db.Text
   anonymous      Boolean  @default(false)
+  tx_hash        String   @unique
   campaign_id    String
   campaign       Campaign @relation(fields: [campaign_id], references: [id])
   contributor_id String
   contributor    Profile  @relation(fields: [contributor_id], references: [id])
 
-  @@map("contributions")
+  @@map("donations")
+}
+
+model Milestone {
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
+  title           String
+  amount          Decimal   @db.Decimal(15, 2)
+  status          String    @default("pending")
+  release_tx_hash String?
+  released_at     DateTime?
+  sort_order      Int       @default(0)
+  campaign_id     String
+  campaign        Campaign  @relation(fields: [campaign_id], references: [id])
+
+  @@map("milestones")
 }
 
 model PaymentSession {

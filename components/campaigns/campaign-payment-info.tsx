@@ -6,6 +6,7 @@ import { Wallet, Copy, Check } from "lucide-react"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import type { CampaignPaymentInfoProps } from "@/types/campaign"
+import { isValidStellarAddress } from "@/lib/stellar/validation"
 
 export function CampaignPaymentInfo({ walletAddress }: CampaignPaymentInfoProps) {
   const [copied, setCopied] = useState(false)
@@ -56,7 +57,7 @@ export function CampaignPaymentInfo({ walletAddress }: CampaignPaymentInfoProps)
   }
 
   // Check if wallet address is valid
-  const isValidAddress = walletAddress.startsWith("0x") && walletAddress.length === 42
+  const isValidAddress = isValidStellarAddress(walletAddress)
 
   return (
     <Card>
@@ -93,9 +94,9 @@ export function CampaignPaymentInfo({ walletAddress }: CampaignPaymentInfoProps)
           </div>
         </div>
         <div className="text-xs text-muted-foreground space-y-1">
-          <div>• Direct USDC payments via Onchain Kit</div>
+          <div>• Direct USDC payments on Stellar</div>
           <div>• No platform fees</div>
-          <div>• Instant transfers on Base network</div>
+          <div>• Fast transfers on Stellar network</div>
         </div>
       </CardContent>
     </Card>

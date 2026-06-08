@@ -16,11 +16,13 @@ export async function createClient() {
     const isPlaceholder = !supabaseUrl || !supabaseAnonKey || supabaseAnonKey === "your-anon-key-here"
 
     if (isPlaceholder) {
+        const notConfigured = new Error("Supabase is not configured.")
         return {
             auth: {
                 onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
                 getUser: async () => ({ data: { user: null }, error: null }),
                 signOut: async () => { },
+                exchangeCodeForSession: async () => ({ data: { user: null, session: null }, error: notConfigured }),
             },
             storage: {
                 from: () => ({

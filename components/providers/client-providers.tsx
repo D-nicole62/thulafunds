@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { OnchainProvider } from "@/components/providers/onchain-provider"
 import { Providers } from "@/components/providers"
-import { WagmiOnlyProvider } from "@/components/providers/wagmi-provider"
+import { StellarWalletProvider } from "@/components/providers/stellar-wallet-provider"
 
 interface ClientProvidersProps {
   children: React.ReactNode
@@ -18,14 +18,14 @@ export function ClientProviders({ children }: ClientProvidersProps) {
       enableSystem
       disableTransitionOnChange
     >
-      <WagmiOnlyProvider>
+      <StellarWalletProvider>
         <Providers>
           <OnchainProvider>
             {children}
             <Toaster />
           </OnchainProvider>
         </Providers>
-      </WagmiOnlyProvider>
+      </StellarWalletProvider>
     </ThemeProvider>
   )
 }

@@ -5,15 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useOnchain } from "@/components/providers/onchain-provider"
-import { useAccount, useSwitchChain } from "wagmi"
-import { base } from "wagmi/chains"
-import { 
-  Wallet, 
-  CheckCircle, 
-  AlertCircle, 
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
+import {
+  Wallet,
+  CheckCircle,
+  AlertCircle,
   Loader2,
   ExternalLink,
-  RefreshCw
 } from "lucide-react"
 
 interface SmartWalletConnectProps {
@@ -22,18 +20,17 @@ interface SmartWalletConnectProps {
   showNetworkInfo?: boolean
 }
 
-export function SmartWalletConnect({ 
-  onConnect, 
-  onReady, 
-  showNetworkInfo = true 
+export function SmartWalletConnect({
+  onConnect,
+  onReady,
+  showNetworkInfo = true,
 }: SmartWalletConnectProps) {
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
   const { isReady, networkInfo, error: onchainError, balance } = useOnchain()
-  const { address, isConnected, chain } = useAccount()
-  const { switchChain } = useSwitchChain()
+  const { address, isConnected, connectWallet, networkName, walletType, setWalletType } = useStellarWallet()
 
   useEffect(() => {
     setMounted(true)
@@ -54,66 +51,29 @@ export function SmartWalletConnect({
     }
   }, [onchainError])
 
-  const connectWallet = async () => {
+  const handleConnect = async () => {
     setIsConnecting(true)
     setError(null)
 
     try {
-      // Check if wallet is available
-      if (typeof window === "undefined" || typeof window.ethereum === "undefined") {
-        throw new Error("Please install a Web3 wallet like MetaMask or use Coinbase Wallet")
-      }
+      await connectWallet()
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to connect wallet"
 
-      // Request account access
-      const accounts = await window.ethereum.request({
-        method: "eth_requestAccounts",
-      })
-
-      if (accounts.length === 0) {
-        throw new Error("No accounts found")
-      }
-
-      // Switch to Base network if needed
-      if (chain?.id !== base.id) {
-        try {
-          await switchChain({ chainId: base.id })
-        } catch (switchError: any) {
-          // If user rejects network switch, provide helpful message
-          if (switchError.message?.includes("User rejected")) {
-            throw new Error("Please switch to Base network to continue")
-          }
-          throw switchError
-        }
-      }
-    } catch (error: any) {
-      console.error("Wallet connection error:", error)
-      
-      // Provide user-friendly error messages
-      let errorMessage = "Failed to connect wallet"
-      
-      if (error.message.includes("User rejected")) {
+      let errorMessage = message
+      if (message.toLowerCase().includes("cancelled") || message.toLowerCase().includes("canceled")) {
         errorMessage = "Wallet connection was cancelled. Please try again."
-      } else if (error.message.includes("No accounts found")) {
-        errorMessage = "No accounts found in your wallet. Please unlock your wallet."
-      } else if (error.message.includes("install")) {
-        errorMessage = "Please install a Web3 wallet like MetaMask or use Coinbase Wallet."
-      } else if (error.message.includes("Base network")) {
-        errorMessage = "Please switch to Base network to continue."
-      } else if (error.message) {
-        errorMessage = error.message
+      } else if (message.toLowerCase().includes("freighter")) {
+        errorMessage = message
+      } else if (!message.toLowerCase().includes("install")) {
+        errorMessage =
+          "Please install the Freighter browser extension to connect your Stellar wallet."
       }
-      
+
       setError(errorMessage)
     } finally {
       setIsConnecting(false)
-    }
-  }
-
-  const switchToBase = async () => {
-    try {
-      await switchChain({ chainId: base.id })
-    } catch (error: any) {
-      setError("Failed to switch to Base network")
     }
   }
 
@@ -162,7 +122,7 @@ export function SmartWalletConnect({
             )}
           </div>
           <div className="text-xs text-green-700">
-            Your wallet is connected and ready for USDC payments
+            Your wallet is connected and ready for USDC payments on Stellar
           </div>
         </CardContent>
       </Card>
@@ -179,7 +139,7 @@ export function SmartWalletConnect({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Connect your Web3 wallet to contribute using USDC on Base network.
+          Connect your Stellar wallet to donate USDC into Soroban escrow.
         </p>
 
         {error && (
@@ -189,45 +149,45 @@ export function SmartWalletConnect({
           </Alert>
         )}
 
-        {isConnected && chain?.id !== base.id ? (
-          <div className="space-y-3">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Please switch to Base network to use USDC payments
-              </AlertDescription>
-            </Alert>
-            <Button onClick={switchToBase} className="w-full">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Switch to Base Network
+        <div className="flex gap-2">
+          {(["freighter", "albedo", "xbull"] as const).map((type) => (
+            <Button
+              key={type}
+              type="button"
+              variant={walletType === type ? "default" : "outline"}
+              size="sm"
+              className="flex-1 capitalize"
+              onClick={() => setWalletType(type)}
+            >
+              {type}
             </Button>
-          </div>
-        ) : (
-          <Button onClick={connectWallet} disabled={isConnecting} className="w-full">
-            {isConnecting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
-                <Wallet className="mr-2 h-4 w-4" />
-                Connect Wallet
-              </>
-            )}
-          </Button>
-        )}
+          ))}
+        </div>
+
+        <Button onClick={handleConnect} disabled={isConnecting} className="w-full">
+          {isConnecting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              <Wallet className="mr-2 h-4 w-4" />
+              Connect {walletType} Wallet
+            </>
+          )}
+        </Button>
 
         <div className="text-xs text-muted-foreground text-center space-y-1">
-          <p>Supports Coinbase Wallet, MetaMask, and other Web3 wallets</p>
-          <p>Powered by Onchain Kit</p>
-          <a 
-            href="https://onchainkit.com/" 
-            target="_blank" 
+          <p>Requires the Freighter browser extension</p>
+          <p>Network: {networkName}</p>
+          <a
+            href="https://www.freighter.app/"
+            target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-primary hover:underline"
           >
-            Learn more <ExternalLink className="h-3 w-3" />
+            Get Freighter <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       </CardContent>
