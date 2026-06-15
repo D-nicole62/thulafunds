@@ -80,7 +80,7 @@ model CampaignBoost {
   @@map("campaign_boosts")
 }
 
-/// On-chain donations — every financial action stores a Stellar tx hash
+/// Donations — on-chain (Stellar tx hash) or fiat (Lipila reference id).
 model Donation {
   id             String   @id @default(uuid())
   created_at     DateTime @default(now())
@@ -88,6 +88,9 @@ model Donation {
   message        String?  @db.Text
   anonymous      Boolean  @default(false)
   tx_hash        String   @unique
+  payment_method String?  @default("soroban_escrow")
+  status         String?  @default("completed")
+  currency       String?  @default("USDC")
   campaign_id    String
   campaign       Campaign @relation(fields: [campaign_id], references: [id])
   contributor_id String

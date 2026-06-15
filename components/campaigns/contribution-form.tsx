@@ -22,9 +22,15 @@ import {
   CheckCircle, 
   AlertCircle, 
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Smartphone,
+  CreditCard,
+  Coins
 } from "lucide-react"
 import type { ContributionFormProps } from "@/types/campaign"
+
+const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
+type PayMethod = "lipila" | "card" | "stellar"
 
 export function ContributionForm({ campaign, currentUser, onCloseAction }: ContributionFormProps) {
   const [amount, setAmount] = useState("")
@@ -32,8 +38,20 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [anonymous, setAnonymous] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [step, setStep] = useState<"form" | "wallet" | "payment" | "success">("form")
+  const [step, setStep] = useState<"form" | "wallet" | "payment" | "lipila" | "card" | "success">("form")
   const [transactionStatus, setTransactionStatus] = useState<"pending" | "completed">("completed")
+  const [payMethod, setPayMethod] = useState<PayMethod>("lipila")
+  const [phone, setPhone] = useState("")
+  const [lipilaStage, setLipilaStage] = useState<"idle" | "prompting" | "waiting">("idle")
+  const [card, setCard] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    city: "",
+    address: "",
+    zip: "",
+    country: "ZM",
+  })
   
   const { toast } = useToast()
   const { paymentStatus, deposit, networkInfo, isReady, error: onchainError, balance } = useOnchain()
@@ -64,16 +82,50 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     e.preventDefault()
     
     if (!amount || isNaN(Number(amount)) || Number(amount) < 0.01) {
-      setError("Please enter a valid amount (minimum $0.01)")
+      setError("Please enter a valid amount (minimum 0.01)")
       return
     }
 
     if (Number(amount) > 10000) {
-      setError("Contribution amount cannot exceed $10,000")
+      setError("Contribution amount cannot exceed 10,000")
       return
     }
 
-    // Check USDC balance
+    if (payMethod === "lipila") {
+      const digits = phone.replace(/\D/g, "")
+      if (digits.length < 9) {
+        setError("Please enter a valid mobile money number (e.g. 0976000000)")
+        return
+      }
+      setError("")
+      setStep("lipila")
+      return
+    }
+
+    if (payMethod === "card") {
+      const digits = phone.replace(/\D/g, "")
+      if (!card.firstName.trim() || !card.lastName.trim()) {
+        setError("Please enter your first and last name.")
+        return
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim())) {
+        setError("Please enter a valid email address.")
+        return
+      }
+      if (digits.length < 9) {
+        setError("Please enter a valid phone number.")
+        return
+      }
+      if (!card.city.trim() || !card.address.trim() || !card.zip.trim()) {
+        setError("Please complete your billing address (city, address, zip).")
+        return
+      }
+      setError("")
+      setStep("card")
+      return
+    }
+
+    // Stellar path: check USDC balance
     if (balance && parseFloat(balance) < Number(amount)) {
       setError(`Insufficient USDC balance. You have ${parseFloat(balance).toFixed(2)} USDC, but need ${Number(amount).toFixed(2)} USDC.`)
       return
@@ -81,6 +133,196 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
     setError("")
     setStep("wallet")
+  }
+
+  const formatMsisdn = (input: string) => {
+    const digits = input.replace(/\D/g, "")
+    if (digits.startsWith("260")) return digits
+    if (digits.startsWith("0")) return `260${digits.slice(1)}`
+    if (digits.length === 9) return `260${digits}`
+    return digits
+  }
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  /** Poll Lipila collection status until success/failure or timeout. */
+  const waitForConfirmation = async (referenceId: string, maxAttempts: number) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await sleep(5000)
+      const statusRes = await fetch(
+        `/api/lipila/status?referenceId=${encodeURIComponent(referenceId)}`,
+      )
+      const statusData = await statusRes.json().catch(() => ({}))
+      const status = String(statusData?.status || "").toLowerCase()
+
+      if (["successful", "success", "completed"].includes(status)) return true
+      if (["failed", "failure", "cancelled", "canceled", "rejected", "error"].includes(status)) {
+        throw new Error(statusData?.message || "The payment was declined or cancelled.")
+      }
+    }
+    return false
+  }
+
+  const recordLipilaDonation = async (referenceId: string) => {
+    const recordRes = await fetch(`/api/campaigns/${campaign.id}/contribute-lipila`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ referenceId, message: message.trim() || undefined, anonymous }),
+    })
+    if (!recordRes.ok) {
+      const errorData = await recordRes.json().catch(() => ({}))
+      throw new Error(errorData.error || "Payment succeeded but recording the donation failed.")
+    }
+  }
+
+  const newReferenceId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `lpl-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+  const processCardPayment = async () => {
+    setLoading(true)
+    setError("")
+    setLipilaStage("prompting")
+
+    const referenceId = newReferenceId()
+    const origin = typeof window !== "undefined" ? window.location.origin : ""
+    const returnUrl = `${origin}/campaigns/${campaign.id}`
+
+    try {
+      const collectRes = await fetch("/api/lipila/collect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "card",
+          data: {
+            collectionRequest: {
+              referenceId,
+              amount: Number(amount),
+              narration: `Donation to ${campaign.title}`.slice(0, 100),
+              currency: LIPILA_CURRENCY,
+              backUrl: returnUrl,
+              redirectUrl: returnUrl,
+            },
+            customerInfo: {
+              firstName: card.firstName.trim(),
+              lastName: card.lastName.trim(),
+              email: card.email.trim(),
+              phoneNumber: formatMsisdn(phone),
+              country: card.country.trim() || "ZM",
+              city: card.city.trim(),
+              address: card.address.trim(),
+              zip: card.zip.trim(),
+            },
+          },
+        }),
+      })
+
+      const collectData = await collectRes.json().catch(() => ({}))
+      if (!collectRes.ok) {
+        throw new Error(collectData.error || "Failed to start the card payment.")
+      }
+
+      const redirectUrl =
+        collectData.cardRedirectionUrl ||
+        collectData.data?.cardRedirectionUrl ||
+        collectData.redirectUrl
+
+      if (!redirectUrl) {
+        throw new Error("The gateway did not return a card payment page. Please try again.")
+      }
+
+      // Open Lipila's secure card page in a new tab; keep polling here.
+      if (typeof window !== "undefined") {
+        window.open(redirectUrl, "_blank", "noopener,noreferrer")
+      }
+
+      setLipilaStage("waiting")
+      toast({
+        title: "Complete your card payment",
+        description: "A secure payment page opened in a new tab. Enter your card details there.",
+      })
+
+      const confirmed = await waitForConfirmation(referenceId, 60) // ~5 min
+      if (!confirmed) {
+        throw new Error(
+          "We didn't receive confirmation in time. If you completed the card payment, your donation will appear shortly.",
+        )
+      }
+
+      await recordLipilaDonation(referenceId)
+
+      setTransactionStatus("completed")
+      toast({
+        title: "Donation received!",
+        description: `Thank you for your ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} card contribution.`,
+      })
+      setStep("success")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Card payment failed. Please try again.")
+    } finally {
+      setLoading(false)
+      setLipilaStage("idle")
+    }
+  }
+
+  const processLipilaPayment = async () => {
+    setLoading(true)
+    setError("")
+    setLipilaStage("prompting")
+
+    const referenceId = newReferenceId()
+
+    try {
+      const collectRes = await fetch("/api/lipila/collect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "momo",
+          data: {
+            referenceId,
+            amount: Number(amount),
+            narration: `Donation to ${campaign.title}`.slice(0, 100),
+            accountNumber: formatMsisdn(phone),
+            currency: LIPILA_CURRENCY,
+          },
+        }),
+      })
+
+      const collectData = await collectRes.json().catch(() => ({}))
+      if (!collectRes.ok) {
+        throw new Error(collectData.error || "Failed to start the mobile money payment.")
+      }
+
+      // Lipila collection is asynchronous: the payer approves a prompt on their
+      // phone. Poll the status until it succeeds, fails, or we time out.
+      setLipilaStage("waiting")
+      toast({
+        title: "Check your phone",
+        description: `Approve the ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} payment prompt to complete your donation.`,
+      })
+
+      const confirmed = await waitForConfirmation(referenceId, 30) // ~2.5 min
+      if (!confirmed) {
+        throw new Error(
+          "We didn't receive confirmation in time. If you approved the prompt, your donation will appear shortly.",
+        )
+      }
+
+      await recordLipilaDonation(referenceId)
+
+      setTransactionStatus("completed")
+      toast({
+        title: "Donation received!",
+        description: `Thank you for your ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} contribution.`,
+      })
+      setStep("success")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Mobile money payment failed. Please try again.")
+    } finally {
+      setLoading(false)
+      setLipilaStage("idle")
+    }
   }
 
   const processPayment = async () => {
@@ -239,6 +481,184 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           <Button onClick={onCloseAction} className="w-full">
             Close
           </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (step === "lipila") {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-lg font-semibold">Confirm Mobile Money Payment</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (loading) return
+              setError("")
+              setStep("form")
+            }}
+            disabled={loading}
+            className="h-8 w-8 p-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span>Amount:</span>
+              <span className="font-semibold">{LIPILA_CURRENCY} {Number(amount).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Pay from:</span>
+              <span className="text-sm text-muted-foreground">{formatMsisdn(phone)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Method:</span>
+              <span className="text-sm text-muted-foreground">Lipila Mobile Money</span>
+            </div>
+            {message && (
+              <div className="pt-2 border-t">
+                <div className="text-sm text-muted-foreground">Message:</div>
+                <div className="text-sm">"{message}"</div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="font-medium">{error}</AlertDescription>
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setError("")
+                    processLipilaPayment()
+                  }}
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </Alert>
+          )}
+
+          <Button onClick={processLipilaPayment} disabled={loading} className="w-full" size="lg">
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {lipilaStage === "waiting" ? "Waiting for approval..." : "Sending prompt..."}
+              </>
+            ) : (
+              <>
+                <Smartphone className="mr-2 h-4 w-4" />
+                Pay {LIPILA_CURRENCY} {Number(amount).toFixed(2)}
+              </>
+            )}
+          </Button>
+
+          <div className="text-xs text-muted-foreground text-center space-y-1">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
+              <p className="font-medium mb-1">How it works:</p>
+              <p>• Tap pay, then approve the prompt on your phone</p>
+              <p>• Enter your mobile money PIN to confirm</p>
+              <p>• Keep this window open until it completes</p>
+            </div>
+            <p>Payments processed securely by Lipila</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (step === "card") {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-lg font-semibold">Confirm Card Payment</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (loading) return
+              setError("")
+              setStep("form")
+            }}
+            disabled={loading}
+            className="h-8 w-8 p-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span>Amount:</span>
+              <span className="font-semibold">{LIPILA_CURRENCY} {Number(amount).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Cardholder:</span>
+              <span className="text-sm text-muted-foreground">{card.firstName} {card.lastName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Method:</span>
+              <span className="text-sm text-muted-foreground">Visa / Mastercard</span>
+            </div>
+            {message && (
+              <div className="pt-2 border-t">
+                <div className="text-sm text-muted-foreground">Message:</div>
+                <div className="text-sm">"{message}"</div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="font-medium">{error}</AlertDescription>
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setError("")
+                    processCardPayment()
+                  }}
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </Alert>
+          )}
+
+          <Button onClick={processCardPayment} disabled={loading} className="w-full" size="lg">
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {lipilaStage === "waiting" ? "Waiting for payment..." : "Opening secure page..."}
+              </>
+            ) : (
+              <>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Pay {LIPILA_CURRENCY} {Number(amount).toFixed(2)} by Card
+              </>
+            )}
+          </Button>
+
+          <div className="text-xs text-muted-foreground text-center space-y-1">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
+              <p className="font-medium mb-1">How it works:</p>
+              <p>• A secure Lipila page opens in a new tab</p>
+              <p>• Enter your Visa/Mastercard details there</p>
+              <p>• Return here — we'll confirm automatically</p>
+            </div>
+            <p>Card payments processed securely by Lipila</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -475,9 +895,65 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
+            <Label className="flex items-center gap-2">Payment Method</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPayMethod("lipila")
+                  if (error) setError("")
+                }}
+                className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-center text-sm transition-colors ${
+                  payMethod === "lipila"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input hover:bg-muted"
+                }`}
+              >
+                <Smartphone className="h-5 w-5" />
+                <span className="text-xs font-medium leading-tight">Mobile Money</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPayMethod("card")
+                  if (error) setError("")
+                }}
+                className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-center text-sm transition-colors ${
+                  payMethod === "card"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input hover:bg-muted"
+                }`}
+              >
+                <CreditCard className="h-5 w-5" />
+                <span className="text-xs font-medium leading-tight">Card</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPayMethod("stellar")
+                  if (error) setError("")
+                }}
+                className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-center text-sm transition-colors ${
+                  payMethod === "stellar"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-input hover:bg-muted"
+                }`}
+              >
+                <Coins className="h-5 w-5" />
+                <span className="text-xs font-medium leading-tight">Crypto</span>
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {payMethod === "lipila" && `Mobile money via Lipila (${LIPILA_CURRENCY})`}
+              {payMethod === "card" && `Visa / Mastercard via Lipila (${LIPILA_CURRENCY})`}
+              {payMethod === "stellar" && "USDC on Stellar (crypto wallet required)"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="amount" className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              Contribution Amount
+              {payMethod === "lipila" ? <Smartphone className="h-4 w-4" /> : payMethod === "card" ? <CreditCard className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+              Contribution Amount {payMethod === "stellar" ? "(USDC)" : `(${LIPILA_CURRENCY})`}
             </Label>
             <Input
               id="amount"
@@ -495,9 +971,147 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               className={`text-lg font-medium ${error && (!amount || Number(amount) < 0.01 || Number(amount) > 10000) ? 'border-destructive focus-visible:ring-destructive' : ''}`}
             />
             <p className="text-xs text-muted-foreground">
-              Minimum $0.01, Maximum $10,000
+              Minimum 0.01, Maximum 10,000
             </p>
           </div>
+
+          {payMethod === "lipila" && (
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4" />
+                Mobile Money Number
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                inputMode="tel"
+                placeholder="e.g. 0976 000 000"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value)
+                  if (error) setError("")
+                }}
+                className={`${error && phone.replace(/\D/g, "").length < 9 ? "border-destructive focus-visible:ring-destructive" : ""}`}
+              />
+              <p className="text-xs text-muted-foreground">
+                You'll get a prompt on this number to approve the payment.
+              </p>
+            </div>
+          )}
+
+          {payMethod === "card" && (
+            <div className="space-y-3 rounded-lg border border-input p-3">
+              <p className="text-xs font-medium text-muted-foreground">Billing details</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="firstName" className="text-xs">First name</Label>
+                  <Input
+                    id="firstName"
+                    placeholder="John"
+                    value={card.firstName}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, firstName: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="lastName" className="text-xs">Last name</Label>
+                  <Input
+                    id="lastName"
+                    placeholder="Doe"
+                    value={card.lastName}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, lastName: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="cardEmail" className="text-xs">Email</Label>
+                <Input
+                  id="cardEmail"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={card.email}
+                  onChange={(e) => {
+                    setCard((c) => ({ ...c, email: e.target.value }))
+                    if (error) setError("")
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="cardPhone" className="text-xs">Phone</Label>
+                <Input
+                  id="cardPhone"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="e.g. 0976 000 000"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value)
+                    if (error) setError("")
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="city" className="text-xs">City</Label>
+                  <Input
+                    id="city"
+                    placeholder="Lusaka"
+                    value={card.city}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, city: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="zip" className="text-xs">Zip / Postal</Label>
+                  <Input
+                    id="zip"
+                    placeholder="10101"
+                    value={card.zip}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, zip: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="address" className="text-xs">Address</Label>
+                  <Input
+                    id="address"
+                    placeholder="123 Main St"
+                    value={card.address}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, address: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="country" className="text-xs">Country</Label>
+                  <Input
+                    id="country"
+                    placeholder="ZM"
+                    value={card.country}
+                    onChange={(e) => {
+                      setCard((c) => ({ ...c, country: e.target.value }))
+                      if (error) setError("")
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Card details are entered on Lipila's secure page, not here.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="message" className="flex items-center gap-2">

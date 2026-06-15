@@ -39,6 +39,9 @@ export interface Donation {
   message?: string
   anonymous: boolean
   tx_hash: string
+  payment_method?: string
+  status?: string
+  currency?: string
   created_at: string
   profiles?: Profile
 }
