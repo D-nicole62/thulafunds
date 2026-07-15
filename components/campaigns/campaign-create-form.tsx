@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WalletSetupStep } from "@/components/campaigns/wallet-setup-step"
 import { createCampaignAction } from "@/app/actions/campaign-actions"
+import { useOnchain } from "@/components/providers/onchain-provider"
+import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
+import { isSorobanEscrowConfigured } from "@/lib/stellar/config"
+import { formatStellarAddressShort } from "@/lib/stellar/validation"
+import {
+  defaultCampaignDeadline,
+  formatDeadlineInputValue,
+} from "@/lib/stellar/campaign-deploy"
 import {
   Loader2,
   Upload,
@@ -28,11 +35,15 @@ import {
 export function CampaignCreateForm() {
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [deployingEscrow, setDeployingEscrow] = useState(false)
   const [error, setError] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [isWalletConnected, setIsWalletConnected] = useState(false)
-  const router = useRouter()
+  const { deployCampaignEscrow } = useOnchain()
+  const { connectWallet, address: connectedAddress, isConnected, needsFunding } = useStellarWallet()
+  const escrowEnabled = isSorobanEscrowConfigured()
+  const defaultDeadline = formatDeadlineInputValue(defaultCampaignDeadline())
 
   const categories = [
     "Education",
@@ -84,9 +95,10 @@ export function CampaignCreateForm() {
       const description = formData.get("description") as string
       const goalAmount = formData.get("goalAmount") as string
       const category = formData.get("category") as string
+      const deadlineInput = formData.get("deadline") as string
       const imageFile = formData.get("image") as File
 
-      console.log("Form data extracted:", { title, description, goalAmount, category, walletAddress })
+      console.log("Form data extracted:", { title, description, goalAmount, category, walletAddress, deadlineInput })
 
       // Validate required fields
       if (!title?.trim()) {
@@ -100,6 +112,13 @@ export function CampaignCreateForm() {
       }
       if (!category) {
         throw new Error("Campaign category is required")
+      }
+      if (!deadlineInput) {
+        throw new Error("Campaign deadline is required")
+      }
+      const deadline = new Date(deadlineInput + "T23:59:59Z")
+      if (isNaN(deadline.getTime()) || deadline <= new Date()) {
+        throw new Error("Deadline must be a future date")
       }
 
       // Add wallet address to form data
@@ -115,8 +134,44 @@ export function CampaignCreateForm() {
       }
 
       if (result.campaignId) {
+        if (escrowEnabled) {
+          setDeployingEscrow(true)
+          try {
+            let signerAddress = connectedAddress
+            if (!isConnected || !signerAddress) {
+              signerAddress = await connectWallet()
+            }
+            if (walletAddress && signerAddress !== walletAddress) {
+              throw new Error(
+                `Connected wallet (${formatStellarAddressShort(signerAddress)}) must match your organizer wallet (${formatStellarAddressShort(walletAddress)}). Connect the correct account in Freighter.`,
+              )
+            }
+            if (needsFunding) {
+              throw new Error(
+                "Fund your testnet wallet with XLM before deploying escrow (use Fund Testnet Account in wallet setup).",
+              )
+            }
+            await deployCampaignEscrow(
+              result.campaignId,
+              Number(goalAmount),
+              deadline,
+            )
+          } catch (deployErr: unknown) {
+            const msg =
+              deployErr instanceof Error ? deployErr.message : "Escrow deployment failed"
+            console.error("Escrow deployment error:", deployErr)
+            setError(
+              `Campaign saved, but Soroban escrow deployment failed: ${msg}. Contributors can still donate via direct wallet payments.`,
+            )
+            setLoading(false)
+            setDeployingEscrow(false)
+            window.location.href = `/campaigns/${result.campaignId}`
+            return
+          }
+          setDeployingEscrow(false)
+        }
+
         console.log("Campaign created successfully, redirecting to:", `/campaigns/${result.campaignId}`)
-        // Use window.location instead of router.push to ensure navigation works
         window.location.href = `/campaigns/${result.campaignId}`
       } else {
         throw new Error("Campaign was created but no ID was returned")
@@ -167,7 +222,11 @@ export function CampaignCreateForm() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <WalletSetupStep onComplete={handleWalletComplete} required={true} />
+            <WalletSetupStep
+              onComplete={handleWalletComplete}
+              required={true}
+              requireSignerConnection={escrowEnabled}
+            />
 
             <div className="flex justify-end mt-6">
               <Button onClick={() => setCurrentStep(2)} disabled={!canProceedToStep2} className="min-w-32">
@@ -241,7 +300,27 @@ export function CampaignCreateForm() {
                   step="0.01"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Set a realistic goal in USDC. Contributors will send payments directly to your wallet
+                  {escrowEnabled
+                    ? "Goal is enforced on-chain in the Soroban escrow contract"
+                    : "Set a realistic goal in USDC. Contributors can send payments directly to your wallet"}
+                </p>
+              </div>
+
+              {/* Deadline */}
+              <div className="space-y-2">
+                <Label htmlFor="deadline">Campaign Deadline *</Label>
+                <Input
+                  id="deadline"
+                  name="deadline"
+                  type="date"
+                  required
+                  defaultValue={defaultDeadline}
+                  min={formatDeadlineInputValue(new Date(Date.now() + 86400000))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {escrowEnabled
+                    ? "Donors can request refunds after this date if the goal is not met"
+                    : "When the campaign ends — shown to contributors on the campaign page"}
                 </p>
               </div>
 
@@ -332,10 +411,10 @@ export function CampaignCreateForm() {
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating Campaign...
+                      {deployingEscrow ? "Deploying Soroban Escrow..." : "Creating Campaign..."}
                     </>
                   ) : (
-                    "Create Campaign"
+                    escrowEnabled ? "Create Campaign & Deploy Escrow" : "Create Campaign"
                   )}
                 </Button>
               </div>
@@ -344,13 +423,22 @@ export function CampaignCreateForm() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-semibold text-blue-900 mb-2">Payment Information:</h4>
                 <ul className="text-sm text-blue-800 space-y-1">
-                  <li>
-                    • Contributors will send USDC directly to your wallet: {walletAddress?.slice(0, 6)}...
-                    {walletAddress?.slice(-4)}
-                  </li>
-                  <li>• Payments are processed through Onchain Kit for security</li>
-                  <li>• You'll receive instant notifications for each contribution</li>
-                  <li>• No platform fees on direct wallet payments</li>
+                  {escrowEnabled ? (
+                    <>
+                      <li>• A Soroban escrow contract will be deployed for this campaign (requires wallet signature)</li>
+                      <li>• Donations are held in escrow until the goal is met or the deadline passes</li>
+                      <li>• Your connected wallet ({walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}) receives funds on successful withdrawal</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>
+                        • Contributors will send USDC directly to your wallet: {walletAddress?.slice(0, 6)}...
+                        {walletAddress?.slice(-4)}
+                      </li>
+                      <li>• Deploy the campaign factory (see contracts/README.md) to enable Soroban escrow</li>
+                    </>
+                  )}
+                  <li>• Mobile money and card donations are also available via Lipila</li>
                 </ul>
               </div>
             </form>

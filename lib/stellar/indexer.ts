@@ -100,3 +100,58 @@ export async function indexDonationFromTx(
 
   await syncCampaignBalance(campaignId)
 }
+
+/** Verify a direct USDC payment to the organizer wallet (no Soroban escrow). */
+export async function indexDirectDonationFromTx(
+  campaignId: string,
+  txHash: string,
+  contributorId: string,
+  amount: number,
+  message?: string,
+  anonymous?: boolean,
+): Promise<void> {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { wallet_address: true },
+  })
+
+  if (!campaign?.wallet_address) {
+    throw new Error("Campaign has no recipient wallet")
+  }
+
+  const verification = await verifyTransactionOnHorizon(
+    txHash,
+    campaign.wallet_address,
+    amount,
+  )
+
+  if (!verification.verified) {
+    throw new Error(verification.error || "Transaction verification failed")
+  }
+
+  const existing = await prisma.donation.findUnique({ where: { tx_hash: txHash } })
+  if (existing) return
+
+  await prisma.$transaction([
+    prisma.donation.create({
+      data: {
+        campaign_id: campaignId,
+        contributor_id: contributorId,
+        amount,
+        message: message || null,
+        anonymous: anonymous || false,
+        tx_hash: txHash,
+        payment_method: "stellar_direct",
+        status: "completed",
+        currency: "USDC",
+      },
+    }),
+    prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        current_amount: { increment: amount },
+        updated_at: new Date(),
+      },
+    }),
+  ])
+}

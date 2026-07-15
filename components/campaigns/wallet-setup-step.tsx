@@ -16,6 +16,8 @@ import { getUserWallet, addWallet as addWalletAction } from "@/app/actions/walle
 interface WalletSetupStepProps {
   onComplete: (walletAddress: string) => void
   required?: boolean
+  /** When true, Freighter must be connected (required for Soroban escrow deploy). */
+  requireSignerConnection?: boolean
 }
 
 interface UserWallet {
@@ -24,7 +26,11 @@ interface UserWallet {
   verified: boolean
 }
 
-export function WalletSetupStep({ onComplete, required = true }: WalletSetupStepProps) {
+export function WalletSetupStep({
+  onComplete,
+  required = true,
+  requireSignerConnection = false,
+}: WalletSetupStepProps) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [isValidated, setIsValidated] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -51,10 +57,12 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
       if (wallets.length > 0) {
         setUserWallets(wallets)
 
-        // Auto-select if only one wallet
+        // Auto-select if only one wallet (escrow still requires Freighter connect below)
         if (wallets.length === 1) {
           setSelectedWallet(wallets[0].address)
-          handleWalletSelect(wallets[0].address)
+          if (!requireSignerConnection) {
+            handleWalletSelect(wallets[0].address)
+          }
         }
       }
     } catch (error) {
@@ -69,13 +77,20 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
   const handleWalletSelect = (address: string) => {
     setWalletAddress(address)
     setSelectedWallet(address)
+    if (requireSignerConnection) {
+      setIsValidated(false)
+      return
+    }
     setIsValidated(true)
     onComplete(address)
   }
 
   const handleWalletConnect = (address: string) => {
     console.log("Wallet connected in setup step:", address)
-    handleWalletSelect(address)
+    setWalletAddress(address)
+    setSelectedWallet(address)
+    setIsValidated(true)
+    onComplete(address)
   }
 
   const handleAddNewWallet = async () => {
@@ -91,7 +106,7 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
 
       // Reload wallets and select the new one
       await loadUserWallets()
-      handleWalletSelect(newWalletAddress.toLowerCase())
+      handleWalletSelect(newWalletAddress.trim())
       setShowAddWallet(false)
       setNewWalletAddress("")
     } catch (error) {
@@ -136,7 +151,18 @@ export function WalletSetupStep({ onComplete, required = true }: WalletSetupStep
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            You must specify a wallet address to receive payments for your campaign. Contributors will send USDC directly to this address.
+            {requireSignerConnection
+              ? "Connect Freighter (or Albedo/xBull) below to sign the Soroban escrow deployment. The connected wallet receives campaign funds."
+              : "You must specify a wallet address to receive payments for your campaign."}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {requireSignerConnection && selectedWallet && !isValidated && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Selected {selectedWallet.slice(0, 6)}...{selectedWallet.slice(-4)} — now connect the same wallet below to continue.
           </AlertDescription>
         </Alert>
       )}

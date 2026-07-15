@@ -4,6 +4,7 @@ import {
   LIPILA_CALLBACK_URL,
   LIPILA_ENDPOINTS,
 } from "@/lib/lipila/config"
+import { lipilaUpstreamToJson } from "@/lib/lipila/upstream"
 
 /**
  * Server-side proxy to Lipila collections (mobile money / card).
@@ -57,34 +58,5 @@ export async function POST(request: NextRequest) {
   }
 
   const text = await upstream.text()
-  const trimmed = text.trimStart()
-
-  // Upstream sometimes returns an HTML error page instead of JSON.
-  if (
-    trimmed.toUpperCase().startsWith("<!DOCTYPE") ||
-    trimmed.toLowerCase().startsWith("<html")
-  ) {
-    return NextResponse.json(
-      {
-        error: "The payment gateway returned an unexpected response. Please try again later.",
-        detail: `Upstream returned HTML (HTTP ${upstream.status})`,
-      },
-      { status: 502 },
-    )
-  }
-
-  let decoded: unknown
-  try {
-    decoded = JSON.parse(text)
-  } catch {
-    return NextResponse.json(
-      {
-        error: "The payment gateway returned an invalid response. Please try again later.",
-        detail: `Invalid JSON from upstream (HTTP ${upstream.status})`,
-      },
-      { status: 502 },
-    )
-  }
-
-  return NextResponse.json(decoded, { status: upstream.status })
+  return lipilaUpstreamToJson(upstream, text)
 }

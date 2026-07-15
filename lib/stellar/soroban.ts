@@ -1,4 +1,5 @@
 import {
+  Account,
   Address,
   Contract,
   nativeToScVal,
@@ -29,7 +30,7 @@ export async function getCrowdfundBalance(contractId: string): Promise<number> {
   const sourceKey = Address.fromString(
     "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
   )
-  const account = new xdr.Account(sourceKey.toString(), "0")
+  const account = new Account(sourceKey.toString(), "0")
 
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -59,7 +60,7 @@ export async function getCrowdfundGoal(contractId: string): Promise<number> {
   const sourceKey = Address.fromString(
     "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
   )
-  const account = new xdr.Account(sourceKey.toString(), "0")
+  const account = new Account(sourceKey.toString(), "0")
 
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -250,6 +251,10 @@ export async function invokeCreateCampaign(
     getResponse = await server.getTransaction(hash)
   }
 
+  if (getResponse.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error("Campaign deployment transaction failed on-chain")
+  }
+
   const contractAddress = extractDeployedContractAddress(getResponse)
   return { txHash: hash, contractAddress }
 }
@@ -260,8 +265,16 @@ function extractDeployedContractAddress(
   if (!response.returnValue) {
     throw new Error("No contract address returned from factory")
   }
-  const address = scValToNative(response.returnValue) as string
-  return address
+  const native = scValToNative(response.returnValue)
+  if (typeof native === "string") return native
+  if (native && typeof native === "object") {
+    const maybeAddress = native as { toString?: () => string }
+    if (typeof maybeAddress.toString === "function") {
+      const s = maybeAddress.toString()
+      if (s.startsWith("C")) return s
+    }
+  }
+  return Address.fromScVal(response.returnValue).toString()
 }
 
 /** Release a milestone tranche */

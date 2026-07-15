@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { DollarSign, Target, Users, TrendingUp, AlertTriangle } from "lucide-react"
+import { DollarSign, Target, Users, TrendingUp } from "lucide-react"
+import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
 
 interface DashboardStatsProps {
   userId: string
@@ -75,29 +76,9 @@ export async function DashboardStats({ userId }: DashboardStatsProps) {
     )
   } catch (error) {
     console.error("DashboardStats error:", error)
-
     return (
       <div className="grid gap-4 md:grid-cols-1">
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-800">
-              <AlertTriangle className="h-5 w-5" />
-              Error Loading Stats
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <p className="text-sm text-red-700">
-                Unable to load dashboard statistics.
-              </p>
-              <div className="bg-red-100 p-3 rounded-md">
-                <p className="text-xs font-mono text-red-800">
-                  Error: {error instanceof Error ? error.message : "Unknown error"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <DatabaseErrorCard title="Error loading stats" error={error} />
       </div>
     )
   }

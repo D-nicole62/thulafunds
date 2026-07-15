@@ -7,13 +7,22 @@ import {
   getStellarNetwork,
   USDC_ASSET_CODE,
   USDC_ISSUER,
+  CAMPAIGN_FACTORY_ID,
+  USDC_CONTRACT_ID,
+  isSorobanEscrowConfigured,
   getTxExplorerUrl,
 } from "@/lib/stellar/config"
 import {
   invokeDeposit,
   invokeWithdraw,
   invokeRefund,
+  invokeCreateCampaign,
 } from "@/lib/stellar/soroban"
+import { sendDirectUsdcPayment } from "@/lib/stellar/payments"
+import {
+  generateCampaignSalt,
+  registerCampaignContract,
+} from "@/lib/stellar/campaign-deploy"
 
 interface OnchainContextType {
   paymentStatus: "idle" | "pending" | "completed" | "failed"
@@ -28,7 +37,20 @@ interface OnchainContextType {
   withdraw: (contractAddress: string) => Promise<{ txHash: string; explorerUrl: string }>
   /** Donor refund() on expired campaign */
   refund: (contractAddress: string) => Promise<{ txHash: string; explorerUrl: string }>
-  /** @deprecated Use deposit() — kept for x402 premium/boost flows */
+  /** Direct USDC payment to organizer wallet when no Soroban escrow exists */
+  sendDirectPayment: (amount: string, recipientAddress: string, campaignId: string) => Promise<{
+    success: boolean
+    txHash: string
+    explorerUrl: string
+    status: "completed"
+  }>
+  /** Deploy crowdfund escrow via factory after campaign is saved in DB */
+  deployCampaignEscrow: (
+    campaignId: string,
+    goalUsd: number,
+    deadline: Date,
+  ) => Promise<{ txHash: string; contractAddress: string; explorerUrl: string }>
+  /** Platform fee payments (boost, analytics) — direct USDC to x402 wallet */
   makePayment: (amount: string, recipientAddress: string, campaignId: string) => Promise<{
     success: boolean
     txHash: string
@@ -69,6 +91,12 @@ const defaultContext: OnchainContextType = {
   },
   refund: async () => {
     throw new Error("Refund not available")
+  },
+  sendDirectPayment: async () => {
+    throw new Error("Payment system not available")
+  },
+  deployCampaignEscrow: async () => {
+    throw new Error("Escrow deployment not available")
   },
   makePayment: async () => {
     throw new Error("Payment system not available")
@@ -162,6 +190,63 @@ function OnchainProviderInner({ children }: { children: ReactNode }) {
     }
   }
 
+  const sendDirectPayment = async (
+    amountStr: string,
+    recipientAddress: string,
+    campaignId: string,
+  ) => {
+    if (!isConnected || !address) {
+      throw new Error("Connect your Stellar wallet (Freighter, Albedo, or xBull)")
+    }
+
+    const cleanAmount = amountStr.replace("$", "")
+    const amountNum = parseFloat(cleanAmount)
+    if (isNaN(amountNum) || amountNum < 0.01) {
+      throw new Error("Minimum donation is $0.01")
+    }
+    if (balance && parseFloat(balance) < amountNum) {
+      throw new Error("Insufficient USDC balance")
+    }
+
+    setPaymentStatus("pending")
+    setError(null)
+
+    try {
+      const txHash = await sendDirectUsdcPayment(
+        address,
+        recipientAddress,
+        amountNum,
+        signTransaction,
+      )
+
+      const record: PaymentRecord = {
+        id: crypto.randomUUID(),
+        amount: amountStr,
+        contractAddress: recipientAddress,
+        campaignId,
+        timestamp: new Date(),
+        status: "completed",
+        network: network.name,
+        txHash,
+      }
+      setPaymentHistory((prev) => [record, ...prev])
+      setPaymentStatus("completed")
+      await refreshBalance()
+
+      return {
+        success: true,
+        txHash,
+        explorerUrl: getTxExplorerUrl(txHash),
+        status: "completed" as const,
+      }
+    } catch (err: unknown) {
+      setPaymentStatus("failed")
+      const msg = err instanceof Error ? err.message : "Payment failed"
+      setError(msg)
+      throw new Error(msg)
+    }
+  }
+
   const withdraw = async (contractAddress: string) => {
     if (!address) throw new Error("Wallet not connected")
     const txHash = await invokeWithdraw(contractAddress, address, signTransaction)
@@ -174,8 +259,56 @@ function OnchainProviderInner({ children }: { children: ReactNode }) {
     return { txHash, explorerUrl: getTxExplorerUrl(txHash) }
   }
 
-  const makePayment = async (amountStr: string, contractAddress: string, campaignId: string) => {
-    const result = await deposit(amountStr, contractAddress, campaignId)
+  const deployCampaignEscrow = async (
+    campaignId: string,
+    goalUsd: number,
+    deadline: Date,
+  ) => {
+    if (!isConnected || !address) {
+      throw new Error(
+        "Connect Freighter and approve the transaction to deploy your Soroban escrow contract.",
+      )
+    }
+    if (!isSorobanEscrowConfigured()) {
+      throw new Error(
+        "Soroban escrow is not configured. Set NEXT_PUBLIC_CAMPAIGN_FACTORY_ID in your environment (see contracts/README.md).",
+      )
+    }
+
+    setPaymentStatus("pending")
+    setError(null)
+
+    try {
+      const salt = await generateCampaignSalt(campaignId)
+      const deadlineUnix = Math.floor(deadline.getTime() / 1000)
+      const { txHash, contractAddress } = await invokeCreateCampaign(
+        CAMPAIGN_FACTORY_ID,
+        address,
+        USDC_CONTRACT_ID,
+        goalUsd,
+        deadlineUnix,
+        salt,
+        signTransaction,
+      )
+
+      await registerCampaignContract(campaignId, contractAddress, txHash, deadline)
+      setPaymentStatus("completed")
+
+      return {
+        txHash,
+        contractAddress,
+        explorerUrl: getTxExplorerUrl(txHash),
+      }
+    } catch (err: unknown) {
+      setPaymentStatus("failed")
+      const msg = err instanceof Error ? err.message : "Escrow deployment failed"
+      setError(msg)
+      throw new Error(msg)
+    }
+  }
+
+  const makePayment = async (amountStr: string, recipientAddress: string, campaignId: string) => {
+    const result = await sendDirectPayment(amountStr, recipientAddress, campaignId)
     return { success: result.success, txHash: result.txHash, status: result.status }
   }
 
@@ -184,6 +317,8 @@ function OnchainProviderInner({ children }: { children: ReactNode }) {
       value={{
         paymentStatus,
         deposit,
+        sendDirectPayment,
+        deployCampaignEscrow,
         withdraw,
         refund,
         makePayment,

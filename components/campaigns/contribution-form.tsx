@@ -12,7 +12,7 @@ import { createContribution } from "@/app/actions/contribution-actions"
 import { useToast } from "@/hooks/use-toast"
 import { useOnchain } from "@/components/providers/onchain-provider"
 import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
-import { isValidStellarAddress } from "@/lib/stellar/validation"
+import { isValidStellarAddress, formatStellarAddressShort } from "@/lib/stellar/validation"
 import { 
   X, 
   DollarSign, 
@@ -31,6 +31,14 @@ import type { ContributionFormProps } from "@/types/campaign"
 
 const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
 type PayMethod = "lipila" | "card" | "stellar"
+
+/** Shared modal card: capped height + internal scroll on small screens */
+const MODAL_CARD_CLASS =
+  "w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] overflow-y-auto overscroll-contain"
+
+/** Main donation step: scrollable body + sticky action buttons */
+const MODAL_CARD_FLEX =
+  "w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex flex-col overflow-hidden overscroll-contain"
 
 export function ContributionForm({ campaign, currentUser, onCloseAction }: ContributionFormProps) {
   const [amount, setAmount] = useState("")
@@ -54,8 +62,12 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   })
   
   const { toast } = useToast()
-  const { paymentStatus, deposit, networkInfo, isReady, error: onchainError, balance } = useOnchain()
+  const { paymentStatus, deposit, sendDirectPayment, networkInfo, isReady, error: onchainError, balance } = useOnchain()
   const { address, isConnected, connectWallet } = useStellarWallet()
+
+  const hasEscrow = Boolean(campaign.contract_address)
+  const hasCryptoWallet = Boolean(campaign.wallet_address)
+  const canPayCrypto = hasEscrow || hasCryptoWallet
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -125,14 +137,18 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       return
     }
 
-    // Stellar path: check USDC balance
-    if (balance && parseFloat(balance) < Number(amount)) {
-      setError(`Insufficient USDC balance. You have ${parseFloat(balance).toFixed(2)} USDC, but need ${Number(amount).toFixed(2)} USDC.`)
-      return
+    if (payMethod === "stellar") {
+      if (!canPayCrypto) {
+        setError("Crypto donations are not available for this campaign. Use Mobile Money or Card.")
+        return
+      }
+      if (balance && parseFloat(balance) < Number(amount)) {
+        setError(`Insufficient USDC balance. You have ${parseFloat(balance).toFixed(2)} USDC, but need ${Number(amount).toFixed(2)} USDC.`)
+        return
+      }
+      setError("")
+      setStep("wallet")
     }
-
-    setError("")
-    setStep("wallet")
   }
 
   const formatMsisdn = (input: string) => {
@@ -331,8 +347,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       return
     }
 
-    if (!campaign.contract_address) {
-      setError("This campaign has no Soroban escrow contract. Please contact the organizer.")
+    if (!canPayCrypto) {
+      setError("This campaign cannot accept crypto donations yet. Use Mobile Money or Card instead.")
       return
     }
 
@@ -340,7 +356,9 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     setError("")
 
     try {
-      const paymentResult = await deposit(amount, campaign.contract_address, campaign.id)
+      const paymentResult = hasEscrow
+        ? await deposit(amount, campaign.contract_address!, campaign.id)
+        : await sendDirectPayment(amount, campaign.wallet_address!, campaign.id)
 
       if (paymentResult?.txHash) {
         const response = await fetch(`/api/campaigns/${campaign.id}/contribute`, {
@@ -362,7 +380,9 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         setTransactionStatus("completed")
         toast({
           title: "Donation confirmed on Stellar!",
-          description: `Your $${Number(amount).toFixed(2)} USDC is held in Soroban escrow. Tx: ${paymentResult.txHash.slice(0, 8)}...`,
+          description: hasEscrow
+            ? `Your $${Number(amount).toFixed(2)} USDC is held in Soroban escrow. Tx: ${paymentResult.txHash.slice(0, 8)}...`
+            : `Your $${Number(amount).toFixed(2)} USDC was sent to the organizer. Tx: ${paymentResult.txHash.slice(0, 8)}...`,
         })
 
         setStep("success")
@@ -455,7 +475,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   if (step === "success") {
     return (
-      <Card className="w-full max-w-md">
+      <Card className={MODAL_CARD_CLASS}>
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
             <CheckCircle className="w-8 h-8 text-green-600" />
@@ -488,7 +508,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   if (step === "lipila") {
     return (
-      <Card className="w-full max-w-md">
+      <Card className={MODAL_CARD_CLASS}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold">Confirm Mobile Money Payment</CardTitle>
           <Button
@@ -577,7 +597,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   if (step === "card") {
     return (
-      <Card className="w-full max-w-md">
+      <Card className={MODAL_CARD_CLASS}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold">Confirm Card Payment</CardTitle>
           <Button
@@ -666,7 +686,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   if (step === "wallet") {
     return (
-      <Card className="w-full max-w-md">
+      <Card className={MODAL_CARD_CLASS}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold">Connect Wallet</CardTitle>
           <Button
@@ -714,7 +734,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
                   <span className="font-medium">Wallet Connected</span>
                 </div>
                 <div className="text-sm text-green-700 mt-1">
-                  {address?.slice(0, 6)}...{address?.slice(-4)}
+                  {formatStellarAddressShort(address)}
                 </div>
                 {balance && (
                   <div className="text-sm text-green-700 mt-1">
@@ -739,7 +759,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
   if (step === "payment") {
     return (
-      <Card className="w-full max-w-md">
+      <Card className={MODAL_CARD_CLASS}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold">Confirm Payment</CardTitle>
           <Button
@@ -765,9 +785,20 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               <span className="text-sm text-muted-foreground">{networkInfo.name}</span>
             </div>
             <div className="flex justify-between">
+              <span>Destination:</span>
+              <span className="text-sm text-muted-foreground">
+                {hasEscrow ? "Soroban escrow" : "Organizer wallet"}
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span>Currency:</span>
               <span className="text-sm text-muted-foreground">USDC</span>
             </div>
+            {!hasEscrow && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+                This campaign has no on-chain escrow yet. Your USDC goes directly to the organizer&apos;s wallet.
+              </p>
+            )}
             {balance && (
               <div className="flex justify-between">
                 <span>Your Balance:</span>
@@ -853,8 +884,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+    <Card className={MODAL_CARD_FLEX}>
+      <CardHeader className="flex shrink-0 flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-lg font-semibold">Make a Contribution</CardTitle>
         <Button
           variant="ghost"
@@ -865,8 +896,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           <X className="h-4 w-4" />
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="mb-6">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto pb-4">
+        <div className="mb-4">
           <h3 className="font-medium text-sm text-muted-foreground mb-2">
             Campaign Progress
           </h3>
@@ -893,7 +924,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="contribution-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label className="flex items-center gap-2">Payment Method</Label>
             <div className="grid grid-cols-3 gap-2">
@@ -930,14 +961,16 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               <button
                 type="button"
                 onClick={() => {
+                  if (!canPayCrypto) return
                   setPayMethod("stellar")
                   if (error) setError("")
                 }}
+                disabled={!canPayCrypto}
                 className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-center text-sm transition-colors ${
                   payMethod === "stellar"
                     ? "border-primary bg-primary/5 ring-1 ring-primary"
                     : "border-input hover:bg-muted"
-                }`}
+                } ${!canPayCrypto ? "cursor-not-allowed opacity-50" : ""}`}
               >
                 <Coins className="h-5 w-5" />
                 <span className="text-xs font-medium leading-tight">Crypto</span>
@@ -946,7 +979,9 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             <p className="text-xs text-muted-foreground">
               {payMethod === "lipila" && `Mobile money via Lipila (${LIPILA_CURRENCY})`}
               {payMethod === "card" && `Visa / Mastercard via Lipila (${LIPILA_CURRENCY})`}
-              {payMethod === "stellar" && "USDC on Stellar (crypto wallet required)"}
+              {payMethod === "stellar" && hasEscrow && "USDC held in Soroban escrow on Stellar"}
+              {payMethod === "stellar" && !hasEscrow && canPayCrypto && "USDC sent directly to the organizer's Stellar wallet"}
+              {payMethod === "stellar" && !canPayCrypto && "Crypto unavailable for this campaign"}
             </p>
           </div>
 
@@ -1149,27 +1184,27 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               <AlertDescription className="font-medium">{error}</AlertDescription>
             </Alert>
           )}
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCloseAction}
-              className="flex-1"
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              className="flex-1"
-              disabled={loading || !amount || Number(amount) < 0.01 || Number(amount) > 10000}
-            >
-              Continue to Payment
-            </Button>
-          </div>
         </form>
       </CardContent>
+      <div className="shrink-0 border-t bg-card p-4 flex gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCloseAction}
+          className="flex-1"
+          disabled={loading}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          form="contribution-form"
+          className="flex-1"
+          disabled={loading || !amount || Number(amount) < 0.01 || Number(amount) > 10000}
+        >
+          Continue to Payment
+        </Button>
+      </div>
     </Card>
   )
 } 

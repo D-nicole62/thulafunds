@@ -68,6 +68,7 @@ export async function createCampaignAction(formData: FormData) {
     const goalAmount = formData.get("goalAmount") as string
     const category = formData.get("category") as string
     const walletAddress = formData.get("walletAddress") as string
+    const deadlineRaw = formData.get("deadline") as string
     const imageFile = formData.get("image") as File | null
 
     // Validate required fields
@@ -76,6 +77,12 @@ export async function createCampaignAction(formData: FormData) {
     if (!goalAmount) return { error: "Goal amount is required", success: false }
     if (!category) return { error: "Category is required", success: false }
     if (!walletAddress) return { error: "Wallet address is required", success: false }
+    if (!deadlineRaw) return { error: "Campaign deadline is required", success: false }
+
+    const deadline = new Date(deadlineRaw + "T23:59:59Z")
+    if (isNaN(deadline.getTime()) || deadline <= new Date()) {
+      return { error: "Deadline must be a future date", success: false }
+    }
 
     const { isValidStellarAddress, normalizeStellarAddress } = await import("@/lib/stellar/validation")
     const normalizedWallet = normalizeStellarAddress(walletAddress)
@@ -89,15 +96,23 @@ export async function createCampaignAction(formData: FormData) {
       return { error: "Goal amount must be between $100 and $1,000,000", success: false }
     }
 
-    // Handle Image Upload
+    // Handle Image Upload (optional — campaign still saves if upload fails)
     let imageUrl = ""
     if (imageFile && imageFile.size > 0 && imageFile.name !== "undefined") {
       try {
         const { uploadFile } = await import("@/lib/file-upload")
         imageUrl = await uploadFile(imageFile)
-      } catch (uploadError: any) {
+      } catch (uploadError: unknown) {
+        const msg = uploadError instanceof Error ? uploadError.message : "Image upload failed"
         console.error("Image upload failed:", uploadError)
-        return { error: "Failed to upload image: " + uploadError.message, success: false }
+        if (msg.includes("Bucket not found")) {
+          return {
+            error:
+              "Image storage is not set up. Run `pnpm setup:storage` or create a public 'campaigns' bucket in Supabase Storage, then try again. You can also create the campaign without an image.",
+            success: false,
+          }
+        }
+        return { error: `Failed to upload image: ${msg}`, success: false }
       }
     }
 
@@ -116,6 +131,7 @@ export async function createCampaignAction(formData: FormData) {
           image_url: imageUrl || null,
           wallet_address: normalizedWallet,
           payment_method: "soroban_escrow",
+          deadline,
           creator_id: user.id,
           status: "active",
           current_amount: 0,

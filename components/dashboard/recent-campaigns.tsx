@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Plus, Eye, Edit, AlertTriangle } from "lucide-react"
+import { Plus, Eye, Edit } from "lucide-react"
+import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
 
 interface RecentCampaignsProps {
   userId: string
@@ -156,34 +157,7 @@ export async function RecentCampaigns({ userId }: RecentCampaignsProps) {
     )
   } catch (error) {
     console.error("RecentCampaigns error:", error)
-
-    return (
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Recent Campaigns</CardTitle>
-          <Link href="/campaigns/create">
-            <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              New Campaign
-            </Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="h-8 w-8 text-red-600" />
-            </div>
-            <h3 className="font-semibold mb-2">Unable to load campaigns</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              There was an error loading your campaigns.
-            </p>
-            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-              <p className="text-xs text-red-700">Error: {error instanceof Error ? error.message : "Unknown error"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
+    return <DatabaseErrorCard title="Unable to load campaigns" error={error} />
   }
 }
 

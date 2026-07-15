@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { LIPILA_API_KEY, LIPILA_ENDPOINTS } from "@/lib/lipila/config"
+import { lipilaUpstreamToJson } from "@/lib/lipila/upstream"
 
 /**
  * Proxy to Lipila collection status check.
@@ -35,15 +36,5 @@ export async function GET(request: NextRequest) {
   }
 
   const text = await upstream.text()
-  try {
-    return NextResponse.json(JSON.parse(text), { status: upstream.status })
-  } catch {
-    return NextResponse.json(
-      {
-        error: "The payment gateway returned an invalid response.",
-        detail: `Invalid JSON from upstream (HTTP ${upstream.status})`,
-      },
-      { status: 502 },
-    )
-  }
+  return lipilaUpstreamToJson(upstream, text)
 }

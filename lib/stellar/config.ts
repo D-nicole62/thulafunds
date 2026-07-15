@@ -31,21 +31,42 @@ export function getSorobanRpcUrl(): string {
   )
 }
 
-/** Circle USDC issuer on Stellar Mainnet */
-export const USDC_ISSUER =
-  process.env.NEXT_PUBLIC_USDC_ISSUER ||
+/** Testnet USDC (Stellar testnet faucet asset) */
+const TESTNET_USDC_ISSUER =
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+const TESTNET_USDC_SAC =
+  "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+
+/** Mainnet Circle USDC issuer */
+const MAINNET_USDC_ISSUER =
   "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5R43SA4Q"
+
+function isTestnetEnv(): boolean {
+  return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet"
+}
+
+/** Circle USDC issuer on mainnet; testnet USDC when NEXT_PUBLIC_STELLAR_NETWORK=testnet */
+export const USDC_ISSUER =
+  process.env.NEXT_PUBLIC_USDC_ISSUER?.trim() ||
+  (isTestnetEnv() ? TESTNET_USDC_ISSUER : MAINNET_USDC_ISSUER)
 
 export const USDC_ASSET_CODE = "USDC"
 
-/** Soroban Stellar Asset Contract (SAC) for USDC — set after deployment */
-export const USDC_CONTRACT_ID = process.env.NEXT_PUBLIC_USDC_CONTRACT_ID || ""
+/** Soroban Stellar Asset Contract (SAC) for USDC */
+export const USDC_CONTRACT_ID =
+  process.env.NEXT_PUBLIC_USDC_CONTRACT_ID?.trim() ||
+  (isTestnetEnv() ? TESTNET_USDC_SAC : "")
 
 export const CAMPAIGN_FACTORY_ID =
-  process.env.NEXT_PUBLIC_CAMPAIGN_FACTORY_ID || ""
+  process.env.NEXT_PUBLIC_CAMPAIGN_FACTORY_ID?.trim() || ""
 
 export const MILESTONE_CONTRACT_ID =
-  process.env.NEXT_PUBLIC_MILESTONE_CONTRACT_ID || ""
+  process.env.NEXT_PUBLIC_MILESTONE_CONTRACT_ID?.trim() || ""
+
+/** True when factory + USDC SAC are configured for on-chain escrow deployment */
+export function isSorobanEscrowConfigured(): boolean {
+  return Boolean(CAMPAIGN_FACTORY_ID && USDC_CONTRACT_ID)
+}
 
 export const X402_WALLET_ADDRESS = process.env.NEXT_PUBLIC_X402_WALLET_ADDRESS || ""
 

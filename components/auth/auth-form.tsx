@@ -64,7 +64,21 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
         router.push("/dashboard")
       }
     } catch (error: any) {
-      setError(error.message)
+      const raw = error?.message || "Something went wrong. Please try again."
+      // A network-level failure means the Supabase backend is unreachable
+      // (commonly a paused/deleted project or wrong NEXT_PUBLIC_SUPABASE_URL).
+      if (
+        raw === "Failed to fetch" ||
+        raw.toLowerCase().includes("failed to fetch") ||
+        raw.toLowerCase().includes("networkerror") ||
+        raw.toLowerCase().includes("fetch failed")
+      ) {
+        setError(
+          "Can't reach the authentication server. The backend may be paused or misconfigured. Please try again shortly.",
+        )
+      } else {
+        setError(raw)
+      }
     } finally {
       setLoading(false)
     }

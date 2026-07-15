@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useOnchain } from "@/components/providers/onchain-provider"
 import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
+import { formatStellarAddressShort } from "@/lib/stellar/validation"
 import {
   Wallet,
   CheckCircle,
@@ -30,7 +31,19 @@ export function SmartWalletConnect({
   const [mounted, setMounted] = useState(false)
 
   const { isReady, networkInfo, error: onchainError, balance } = useOnchain()
-  const { address, isConnected, connectWallet, networkName, walletType, setWalletType } = useStellarWallet()
+  const {
+    address,
+    isConnected,
+    connectWallet,
+    networkName,
+    walletType,
+    setWalletType,
+    needsFunding,
+    xlmBalance,
+    fundTestnetAccount,
+    error: walletError,
+  } = useStellarWallet()
+  const [isFunding, setIsFunding] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -46,10 +59,24 @@ export function SmartWalletConnect({
   useEffect(() => {
     if (onchainError) {
       setError(onchainError)
+    } else if (walletError) {
+      setError(walletError)
     } else {
       setError(null)
     }
-  }, [onchainError])
+  }, [onchainError, walletError])
+
+  const handleFundAccount = async () => {
+    setIsFunding(true)
+    setError(null)
+    try {
+      await fundTestnetAccount()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fund account")
+    } finally {
+      setIsFunding(false)
+    }
+  }
 
   const handleConnect = async () => {
     setIsConnecting(true)
@@ -95,6 +122,42 @@ export function SmartWalletConnect({
     )
   }
 
+  if (isConnected && address && needsFunding) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-amber-900">
+            <AlertCircle className="h-5 w-5" />
+            Testnet Account Not Funded
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-amber-800">
+            Your wallet address exists in Freighter but has not been created on Stellar testnet yet.
+            Fund it with free test XLM before donating or deploying escrow contracts.
+          </p>
+          <div className="font-mono text-sm bg-white p-2 rounded border">{formatStellarAddressShort(address)}</div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <Button onClick={handleFundAccount} disabled={isFunding} className="w-full">
+            {isFunding ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Funding account...
+              </>
+            ) : (
+              "Fund Testnet Account (10,000 XLM)"
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (isConnected && isReady) {
     return (
       <Card className="border-green-200 bg-green-50">
@@ -107,11 +170,16 @@ export function SmartWalletConnect({
         <CardContent className="space-y-3">
           <div className="space-y-2">
             <div className="font-mono text-sm bg-white p-2 rounded border">
-              {address?.slice(0, 6)}...{address?.slice(-4)}
+              {formatStellarAddressShort(address)}
             </div>
             {balance && (
               <div className="text-sm bg-white p-2 rounded border">
                 Balance: {parseFloat(balance).toFixed(2)} USDC
+              </div>
+            )}
+            {xlmBalance && parseFloat(xlmBalance) > 0 && (
+              <div className="text-sm bg-white p-2 rounded border">
+                XLM: {parseFloat(xlmBalance).toFixed(2)}
               </div>
             )}
             {showNetworkInfo && (

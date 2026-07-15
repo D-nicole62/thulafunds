@@ -10,9 +10,12 @@
     "postinstall": "prisma generate",
     "setup": "pnpm install && prisma generate",
     "setup:check": "tsx scripts/check-setup.ts",
+    "setup:storage": "tsx scripts/setup-storage.ts",
     "db:test": "tsx scripts/test-db-connection.ts",
     "indexer": "tsx scripts/indexer.ts",
-    "contracts:build": "cd contracts && cargo build --target wasm32v1-none --release"
+    "contracts:build": "cd contracts && cargo build --target wasm32v1-none --release",
+    "contracts:deploy": "tsx scripts/deploy-soroban-contracts.ts",
+    "contracts:deploy-help": "tsx scripts/deploy-contracts.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -45,7 +48,7 @@
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@stellar/freighter-api": "^5.0.0",
-    "@stellar/stellar-sdk": "^13.3.0",
+    "@stellar/stellar-sdk": "^16.0.1",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@tanstack/react-query": "latest",

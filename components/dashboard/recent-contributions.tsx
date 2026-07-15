@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Heart, ExternalLink, DollarSign, AlertTriangle } from "lucide-react"
+import { Heart, ExternalLink, DollarSign } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
 
 interface RecentContributionsProps {
   userId: string
@@ -249,31 +250,7 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
     )
   } catch (error) {
     console.error("RecentContributions error:", error)
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Heart className="h-5 w-5 text-red-500" />
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="h-8 w-8 text-red-600" />
-            </div>
-            <h3 className="font-semibold mb-2">Unable to load activity</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              There was an error loading your recent activity.
-            </p>
-            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-              <p className="text-xs text-red-700">Error: {error instanceof Error ? error.message : "Unknown error"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
+    return <DatabaseErrorCard title="Unable to load activity" error={error} />
   }
 }
 

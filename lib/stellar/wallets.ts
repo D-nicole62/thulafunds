@@ -45,12 +45,12 @@ export async function signWithWallet(
     case "freighter": {
       const result = await freighterSignTransaction(xdr, {
         networkPassphrase: network.networkPassphrase,
-        accountToSign,
+        address: accountToSign,
       })
-      if (!result || (typeof result === "object" && "error" in result)) {
+      if (result.error || !result.signedTxXdr) {
         throw new Error("Transaction signing was cancelled")
       }
-      return typeof result === "string" ? result : result.signedTxXdr
+      return result.signedTxXdr
     }
     case "albedo": {
       if (!window.albedo) throw new Error("Albedo wallet not installed")
@@ -73,11 +73,11 @@ export async function signWithWallet(
 }
 
 async function connectFreighter(): Promise<string> {
-  const granted = await freighterRequestAccess()
-  if (!granted) throw new Error("Wallet connection was cancelled")
-  const address = await freighterGetAddress()
-  if (!address) throw new Error("No Stellar account in Freighter")
-  return address
+  const access = await freighterRequestAccess()
+  if (access.error || !access.address) {
+    throw new Error("Wallet connection was cancelled")
+  }
+  return access.address
 }
 
 async function connectAlbedo(): Promise<string> {
@@ -94,9 +94,11 @@ async function connectXBull(): Promise<string> {
 
 export async function checkFreighterConnected(): Promise<string | null> {
   try {
-    const connected = await freighterIsConnected()
-    if (!connected) return null
-    return (await freighterGetAddress()) || null
+    const status = await freighterIsConnected()
+    if (!status.isConnected) return null
+    const result = await freighterGetAddress()
+    if (result.error || !result.address) return null
+    return result.address
   } catch {
     return null
   }

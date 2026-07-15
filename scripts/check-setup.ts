@@ -1,6 +1,6 @@
 import "dotenv/config"
 
-const checks: { name: string; ok: boolean; hint?: string }[] = []
+const checks: { name: string; ok: boolean; hint?: string; optional?: boolean }[] = []
 
 function hasEnv(key: string, invalid?: string[]) {
   const value = process.env[key]?.trim()
@@ -41,20 +41,25 @@ checks.push({
 
 checks.push({
   name: "NEXT_PUBLIC_USDC_ISSUER",
-  ok: hasEnv("NEXT_PUBLIC_USDC_ISSUER"),
-  hint: "Circle USDC issuer on Stellar",
+  ok:
+    hasEnv("NEXT_PUBLIC_USDC_ISSUER") ||
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet",
+  hint: "Set USDC issuer (testnet default: GBBD47IF6...)",
 })
 
 checks.push({
   name: "NEXT_PUBLIC_USDC_CONTRACT_ID",
-  ok: hasEnv("NEXT_PUBLIC_USDC_CONTRACT_ID"),
-  hint: "USDC Stellar Asset Contract (SAC) on Soroban",
+  ok:
+    hasEnv("NEXT_PUBLIC_USDC_CONTRACT_ID") ||
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet",
+  hint: "USDC SAC on Soroban (testnet default: CBIELTK6...)",
 })
 
 checks.push({
   name: "NEXT_PUBLIC_CAMPAIGN_FACTORY_ID",
   ok: hasEnv("NEXT_PUBLIC_CAMPAIGN_FACTORY_ID"),
-  hint: "Deployed CampaignFactory contract ID",
+  hint: "Optional — deploy factory (contracts/README.md) to enable Soroban escrow",
+  optional: true,
 })
 
 checks.push({
@@ -65,19 +70,20 @@ checks.push({
 
 checks.push({
   name: "X402_WALLET_ADDRESS",
-  ok: hasEnv("X402_WALLET_ADDRESS"),
-  hint: "Your Stellar public key (G...) for platform payments",
+  ok: hasEnv("X402_WALLET_ADDRESS") || hasEnv("NEXT_PUBLIC_X402_WALLET_ADDRESS"),
+  hint: "Optional — your Stellar G... address for boost/analytics fees",
+  optional: true,
 })
 
 console.log("\nThula Funds — Setup Check\n")
 
 let allOk = true
 for (const check of checks) {
-  const status = check.ok ? "OK" : "MISSING"
+  const status = check.ok ? "OK" : check.optional ? "OPTIONAL" : "MISSING"
   console.log(`  [${status.padEnd(7)}] ${check.name}`)
   if (!check.ok && check.hint) {
     console.log(`           → ${check.hint}`)
-    allOk = false
+    if (!check.optional) allOk = false
   }
 }
 

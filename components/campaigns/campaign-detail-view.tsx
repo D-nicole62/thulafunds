@@ -107,14 +107,22 @@ export function CampaignDetailView({
         </div>
       </div>
 
-      {/* Contribution Modal */}
+      {/* Contribution Modal — scrollable overlay so tall forms (card billing) stay usable */}
       {showContributionForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <ContributionForm
-            campaign={campaign}
-            currentUser={currentUser}
-            onCloseAction={() => setShowContributionForm(false)}
-          />
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/50"
+          onClick={() => setShowContributionForm(false)}
+        >
+          <div
+            className="flex min-h-full items-center justify-center p-4 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ContributionForm
+              campaign={campaign}
+              currentUser={currentUser}
+              onCloseAction={() => setShowContributionForm(false)}
+            />
+          </div>
         </div>
       )}
     </div>

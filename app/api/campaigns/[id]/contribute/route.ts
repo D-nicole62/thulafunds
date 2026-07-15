@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { indexDonationFromTx } from "@/lib/stellar/indexer"
+import { indexDonationFromTx, indexDirectDonationFromTx } from "@/lib/stellar/indexer"
 import { getTxExplorerUrl } from "@/lib/stellar/config"
 
 export async function POST(
@@ -25,15 +25,18 @@ export async function POST(
 
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { id: true, contract_address: true, title: true },
+      select: { id: true, contract_address: true, wallet_address: true, title: true },
     })
 
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    if (!campaign.contract_address) {
-      return NextResponse.json({ error: "Campaign has no Soroban escrow contract" }, { status: 400 })
+    if (!campaign.contract_address && !campaign.wallet_address) {
+      return NextResponse.json(
+        { error: "Campaign has no payment destination configured" },
+        { status: 400 },
+      )
     }
 
     await prisma.profile.upsert({
@@ -42,14 +45,25 @@ export async function POST(
       update: {},
     })
 
-    await indexDonationFromTx(
-      campaignId,
-      txHash,
-      user.id,
-      Number(amount),
-      message,
-      anonymous,
-    )
+    if (campaign.contract_address) {
+      await indexDonationFromTx(
+        campaignId,
+        txHash,
+        user.id,
+        Number(amount),
+        message,
+        anonymous,
+      )
+    } else {
+      await indexDirectDonationFromTx(
+        campaignId,
+        txHash,
+        user.id,
+        Number(amount),
+        message,
+        anonymous,
+      )
+    }
 
     const donation = await prisma.donation.findUnique({ where: { tx_hash: txHash } })
 
