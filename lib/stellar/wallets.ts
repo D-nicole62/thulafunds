@@ -1,10 +1,16 @@
 import {
   isConnected as freighterIsConnected,
+  isAllowed as freighterIsAllowed,
   getAddress as freighterGetAddress,
   requestAccess as freighterRequestAccess,
+  setAllowed as freighterSetAllowed,
   signTransaction as freighterSignTransaction,
 } from "@stellar/freighter-api"
 import { getStellarNetwork } from "@/lib/stellar/config"
+import {
+  assertFreighterNetworkMatchesApp,
+  FreighterNetworkMismatchError,
+} from "@/lib/stellar/freighter-network"
 
 export type WalletType = "freighter" | "albedo" | "xbull"
 
@@ -43,11 +49,16 @@ export async function signWithWallet(
 
   switch (type) {
     case "freighter": {
+      await assertFreighterNetworkMatchesApp()
       const result = await freighterSignTransaction(xdr, {
         networkPassphrase: network.networkPassphrase,
         address: accountToSign,
       })
       if (result.error || !result.signedTxXdr) {
+        const errMsg = String(result.error ?? "")
+        if (/main net|test net|network/i.test(errMsg)) {
+          throw new FreighterNetworkMismatchError(network.name, "Main Net")
+        }
         throw new Error("Transaction signing was cancelled")
       }
       return result.signedTxXdr
@@ -72,11 +83,45 @@ export async function signWithWallet(
   }
 }
 
+function formatFreighterError(error: { message?: string } | undefined): string {
+  if (!error?.message) return "Wallet connection failed"
+  return error.message
+}
+
+async function ensureFreighterInstalled(): Promise<void> {
+  const status = await freighterIsConnected()
+  if (status.error) {
+    throw new Error(formatFreighterError(status.error))
+  }
+  if (!status.isConnected) {
+    throw new Error(
+      "Freighter extension is not installed. Install it from freighter.app, then refresh this page.",
+    )
+  }
+}
+
 async function connectFreighter(): Promise<string> {
+  await ensureFreighterInstalled()
+
+  const allowed = await freighterSetAllowed()
+  if (allowed.error) {
+    throw new Error(formatFreighterError(allowed.error))
+  }
+  if (!allowed.isAllowed) {
+    throw new Error(
+      "Freighter access was not granted. Click Connect again and approve localhost in the Freighter popup.",
+    )
+  }
+
   const access = await freighterRequestAccess()
-  if (access.error || !access.address) {
+  if (access.error) {
+    throw new Error(formatFreighterError(access.error))
+  }
+  if (!access.address) {
     throw new Error("Wallet connection was cancelled")
   }
+
+  await assertFreighterNetworkMatchesApp()
   return access.address
 }
 
@@ -96,6 +141,10 @@ export async function checkFreighterConnected(): Promise<string | null> {
   try {
     const status = await freighterIsConnected()
     if (!status.isConnected) return null
+
+    const allowed = await freighterIsAllowed()
+    if (allowed.error || !allowed.isAllowed) return null
+
     const result = await freighterGetAddress()
     if (result.error || !result.address) return null
     return result.address

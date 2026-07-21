@@ -1,17 +1,9 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-
-interface CampaignData {
-  title: string
-  description: string
-  goalAmount: string
-  category: string
-  imageUrl: string
-  walletAddress: string
-}
+import { createAdminClient } from "@/lib/supabase/admin"
+import { upsertProfile, nowIso } from "@/lib/db/helpers"
 
 export async function createCampaignAction(formData: FormData) {
   try {
@@ -37,27 +29,20 @@ export async function createCampaignAction(formData: FormData) {
 
     console.log("User authenticated:", user.id)
 
-    // Ensure user has a profile
-    let profile = await prisma.profile.findUnique({
-      where: { id: user.id }
-    })
+    const db = createAdminClient()
+
+    const { data: profile } = await db.from("profiles").select("id").eq("id", user.id).maybeSingle()
 
     if (!profile) {
       console.log("Creating profile for user:", user.id)
-      // Create profile if it doesn't exist
       try {
-        profile = await prisma.profile.create({
-          data: {
-            id: user.id,
-            full_name: user.user_metadata?.full_name || "User",
-            created_at: new Date(),
-            updated_at: new Date()
-          }
+        await upsertProfile(user.id, {
+          full_name: user.user_metadata?.full_name || "User",
         })
-      } catch (createProfileError: any) {
+      } catch (createProfileError: unknown) {
         console.error("Failed to create profile:", createProfileError)
         return {
-          error: `Failed to create user profile: ${createProfileError.message}`,
+          error: `Failed to create user profile: ${createProfileError instanceof Error ? createProfileError.message : "Unknown error"}`,
           success: false,
         }
       }
@@ -71,7 +56,6 @@ export async function createCampaignAction(formData: FormData) {
     const deadlineRaw = formData.get("deadline") as string
     const imageFile = formData.get("image") as File | null
 
-    // Validate required fields
     if (!title?.trim()) return { error: "Campaign title is required", success: false }
     if (!description?.trim()) return { error: "Campaign description is required", success: false }
     if (!goalAmount) return { error: "Goal amount is required", success: false }
@@ -90,13 +74,11 @@ export async function createCampaignAction(formData: FormData) {
       return { error: "Invalid Stellar wallet address format", success: false }
     }
 
-    // Validate and parse goal amount
     const goalAmountNum = Number.parseFloat(goalAmount)
     if (isNaN(goalAmountNum) || goalAmountNum < 100 || goalAmountNum > 1000000) {
       return { error: "Goal amount must be between $100 and $1,000,000", success: false }
     }
 
-    // Handle Image Upload (optional — campaign still saves if upload fails)
     let imageUrl = ""
     if (imageFile && imageFile.size > 0 && imageFile.name !== "undefined") {
       try {
@@ -118,31 +100,31 @@ export async function createCampaignAction(formData: FormData) {
 
     console.log("Validation passed, inserting campaign...")
 
-    // Prepare campaign data
-    // Insert campaign into database
-    let data;
-    try {
-      data = await prisma.campaign.create({
-        data: {
-          title: title.trim(),
-          description: description.trim(),
-          goal_amount: goalAmountNum,
-          category,
-          image_url: imageUrl || null,
-          wallet_address: normalizedWallet,
-          payment_method: "soroban_escrow",
-          deadline,
-          creator_id: user.id,
-          status: "active",
-          current_amount: 0,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }
+    const { data, error } = await db
+      .from("campaigns")
+      .insert({
+        title: title.trim(),
+        description: description.trim(),
+        goal_amount: goalAmountNum,
+        category,
+        image_url: imageUrl || null,
+        wallet_address: normalizedWallet,
+        payment_method: "soroban_escrow",
+        deadline: deadline.toISOString(),
+        creator_id: user.id,
+        status: "active",
+        current_amount: 0,
+        on_chain_balance: 0,
+        created_at: nowIso(),
+        updated_at: nowIso(),
       })
-    } catch (error: any) {
+      .select()
+      .single()
+
+    if (error) {
       console.error("Database error details:", error)
       return {
-        error: `Failed to create campaign: ${error.message || "Unknown database error"}`,
+        error: `Failed to create campaign: ${error.message}`,
         success: false,
       }
     }
@@ -153,23 +135,20 @@ export async function createCampaignAction(formData: FormData) {
 
     console.log("Campaign created successfully:", data)
 
-    // Update user profile with wallet address if not already set
     try {
-      await prisma.profile.update({
-        where: { id: user.id },
-        data: {
+      await db
+        .from("profiles")
+        .update({
           wallet_address: normalizedWallet,
           wallet_type: "freighter",
           wallet_verified: true,
-          updated_at: new Date(),
-        }
-      })
+          updated_at: nowIso(),
+        })
+        .eq("id", user.id)
     } catch (profileError) {
       console.warn("Failed to update profile wallet:", profileError)
-      // Don't fail campaign creation if profile update fails
     }
 
-    // Revalidate relevant paths
     try {
       revalidatePath("/dashboard")
       revalidatePath("/campaigns")
@@ -205,20 +184,23 @@ export async function updateCampaign(campaignId: string, formData: FormData) {
     const category = formData.get("category") as string
     const imageUrl = formData.get("imageUrl") as string
 
-    const data = await prisma.campaign.update({
-      where: {
-        id: campaignId,
-        creator_id: user.id // Ensure ownership
-      },
-      data: {
+    const db = createAdminClient()
+    const { data, error } = await db
+      .from("campaigns")
+      .update({
         title: title.trim(),
         description: description.trim(),
         goal_amount: Number.parseFloat(goalAmount),
         category,
         image_url: imageUrl || null,
-        updated_at: new Date(),
-      }
-    })
+        updated_at: nowIso(),
+      })
+      .eq("id", campaignId)
+      .eq("creator_id", user.id)
+      .select()
+      .single()
+
+    if (error) throw error
 
     revalidatePath("/dashboard")
     revalidatePath("/campaigns")
@@ -238,12 +220,14 @@ export async function deleteCampaign(campaignId: string) {
 
     if (!user) throw new Error("User not authenticated")
 
-    await prisma.campaign.delete({
-      where: {
-        id: campaignId,
-        creator_id: user.id
-      }
-    })
+    const db = createAdminClient()
+    const { error } = await db
+      .from("campaigns")
+      .delete()
+      .eq("id", campaignId)
+      .eq("creator_id", user.id)
+
+    if (error) throw error
 
     revalidatePath("/dashboard")
     revalidatePath("/campaigns")

@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { asNumber } from "@/lib/db/helpers"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -13,68 +14,74 @@ interface RecentContributionsProps {
 
 export async function RecentContributions({ userId }: RecentContributionsProps) {
   try {
-    // Get contributions made by the user
-    const contributions = await prisma.donation.findMany({
-      where: { contributor_id: userId },
-      select: {
-        id: true,
-        amount: true,
-        message: true,
-        created_at: true,
-        anonymous: true,
-        campaign: {
-          select: {
-            id: true,
-            title: true,
-            image_url: true,
-            creator_id: true,
-            creator: {
-              select: {
-                full_name: true,
-                avatar_url: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { created_at: "desc" },
-      take: 10,
+    const db = createAdminClient()
+
+    const { data: contributionsRaw, error: contribError } = await db
+      .from("donations")
+      .select("*")
+      .eq("contributor_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(10)
+
+    if (contribError) throw contribError
+
+    const { data: userCampaigns } = await db.from("campaigns").select("id").eq("creator_id", userId)
+    const userCampaignIds = (userCampaigns ?? []).map((c) => c.id)
+
+    const { data: receivedRaw } =
+      userCampaignIds.length > 0
+        ? await db
+            .from("donations")
+            .select("*")
+            .in("campaign_id", userCampaignIds)
+            .order("created_at", { ascending: false })
+            .limit(5)
+        : { data: [] }
+
+    const allCampaignIds = [
+      ...new Set([
+        ...(contributionsRaw ?? []).map((d) => d.campaign_id),
+        ...(receivedRaw ?? []).map((d) => d.campaign_id),
+      ]),
+    ]
+    const allProfileIds = [
+      ...new Set([
+        ...(contributionsRaw ?? []).map((d) => d.contributor_id),
+        ...(receivedRaw ?? []).map((d) => d.contributor_id),
+      ]),
+    ]
+
+    const [{ data: campaigns }, { data: profiles }] = await Promise.all([
+      allCampaignIds.length > 0
+        ? db.from("campaigns").select("id, title, image_url, creator_id").in("id", allCampaignIds)
+        : Promise.resolve({ data: [] }),
+      allProfileIds.length > 0
+        ? db.from("profiles").select("id, full_name, avatar_url").in("id", allProfileIds)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const campaignMap = new Map((campaigns ?? []).map((c) => [c.id, c]))
+    const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
+
+    const contributions = (contributionsRaw ?? []).map((d) => {
+      const campaign = campaignMap.get(d.campaign_id)
+      const creator = campaign ? profileMap.get(campaign.creator_id) : null
+      return {
+        ...d,
+        amount: asNumber(d.amount),
+        campaign: campaign ? { ...campaign, creator } : null,
+      }
     })
 
-    // Get contributions received on user's campaigns
-    const receivedContributions = await prisma.donation.findMany({
-      where: {
-        campaign: {
-          creator_id: userId,
-        },
-      },
-      select: {
-        id: true,
-        amount: true,
-        message: true,
-        created_at: true,
-        anonymous: true,
-        contributor_id: true,
-        contributor: {
-          select: {
-            full_name: true,
-            avatar_url: true,
-          },
-        },
-        campaign: {
-          select: {
-            id: true,
-            title: true,
-            creator_id: true,
-          },
-        },
-      },
-      orderBy: { created_at: "desc" },
-      take: 5,
-    })
+    const receivedContributions = (receivedRaw ?? []).map((d) => ({
+      ...d,
+      amount: asNumber(d.amount),
+      contributor: profileMap.get(d.contributor_id) ?? null,
+      campaign: campaignMap.get(d.campaign_id) ?? null,
+    }))
 
-    const totalContributed = contributions.reduce((sum, contrib) => sum + Number(contrib.amount || 0), 0)
-    const totalReceived = receivedContributions.reduce((sum, contrib) => sum + Number(contrib.amount || 0), 0)
+    const totalContributed = contributions.reduce((sum, contrib) => sum + asNumber(contrib.amount), 0)
+    const totalReceived = receivedContributions.reduce((sum, contrib) => sum + asNumber(contrib.amount), 0)
 
     return (
       <Card>

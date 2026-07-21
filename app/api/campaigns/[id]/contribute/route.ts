@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { upsertProfile } from "@/lib/db/helpers"
 import { indexDonationFromTx, indexDirectDonationFromTx } from "@/lib/stellar/indexer"
 import { getTxExplorerUrl } from "@/lib/stellar/config"
 
@@ -23,12 +24,14 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      select: { id: true, contract_address: true, wallet_address: true, title: true },
-    })
+    const db = createAdminClient()
+    const { data: campaign, error: campaignError } = await db
+      .from("campaigns")
+      .select("id, contract_address, wallet_address, title")
+      .eq("id", campaignId)
+      .maybeSingle()
 
-    if (!campaign) {
+    if (campaignError || !campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
@@ -39,11 +42,7 @@ export async function POST(
       )
     }
 
-    await prisma.profile.upsert({
-      where: { id: user.id },
-      create: { id: user.id, full_name: "User" },
-      update: {},
-    })
+    await upsertProfile(user.id)
 
     if (campaign.contract_address) {
       await indexDonationFromTx(
@@ -65,7 +64,7 @@ export async function POST(
       )
     }
 
-    const donation = await prisma.donation.findUnique({ where: { tx_hash: txHash } })
+    const { data: donation } = await db.from("donations").select("*").eq("tx_hash", txHash).maybeSingle()
 
     return NextResponse.json({
       success: true,

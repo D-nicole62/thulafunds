@@ -1,6 +1,9 @@
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { CampaignDetailView } from "@/components/campaigns/campaign-detail-view"
+import { asNumber } from "@/lib/db/helpers"
+import type { Donation, Profile } from "@/lib/db/types"
 
 interface CampaignPageProps {
   params: Promise<{ id: string }>
@@ -10,45 +13,63 @@ export const dynamic = "force-dynamic"
 
 export default async function CampaignPage({ params }: CampaignPageProps) {
   const { id: campaignId } = await params
+  const db = createAdminClient()
 
-  const campaignData = await prisma.campaign.findUnique({
-    where: { id: campaignId, status: "active" },
-    include: {
-      creator: true,
-      campaign_updates: true,
-      donations: {
-        include: { contributor: true },
-        orderBy: { created_at: "desc" },
-      },
-    },
-  })
+  const { data: campaignData, error } = await db
+    .from("campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("status", "active")
+    .maybeSingle()
 
-  if (!campaignData) {
+  if (error || !campaignData) {
     notFound()
   }
 
+  const [{ data: creator }, { data: campaign_updates }, { data: donationsRaw }] = await Promise.all([
+    db.from("profiles").select("*").eq("id", campaignData.creator_id).maybeSingle(),
+    db.from("campaign_updates").select("*").eq("campaign_id", campaignId),
+    db
+      .from("donations")
+      .select("*")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false }),
+  ])
+
+  const contributorIds = [...new Set((donationsRaw ?? []).map((d) => d.contributor_id))]
+  const { data: contributors } =
+    contributorIds.length > 0
+      ? await db.from("profiles").select("*").in("id", contributorIds)
+      : { data: [] as Profile[] }
+
+  const contributorMap = new Map((contributors ?? []).map((p) => [p.id, p]))
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const currentUser = user
+    ? { id: user.id, email: user.email ?? undefined, full_name: user.user_metadata?.full_name }
+    : null
+
+  const donations = (donationsRaw ?? []).map((d: Donation) => ({
+    ...d,
+    amount: asNumber(d.amount),
+    profiles: contributorMap.get(d.contributor_id) ?? null,
+    contributor: contributorMap.get(d.contributor_id) ?? null,
+  }))
+
   const campaign = {
     ...campaignData,
-    current_amount: Number(campaignData.current_amount),
-    on_chain_balance: Number(campaignData.on_chain_balance),
-    goal_amount: Number(campaignData.goal_amount),
-    deadline: campaignData.deadline?.toISOString(),
-    profiles: campaignData.creator,
-    donations: campaignData.donations.map((d) => ({
-      ...d,
-      amount: Number(d.amount),
-      tx_hash: d.tx_hash,
-      profiles: d.contributor,
-    })),
-    contributions: campaignData.donations.map((d) => ({
-      ...d,
-      amount: Number(d.amount),
-      tx_hash: d.tx_hash,
-      profiles: d.contributor,
-    })),
-    campaign_updates: campaignData.campaign_updates.map((u) => ({
+    current_amount: asNumber(campaignData.current_amount),
+    on_chain_balance: asNumber(campaignData.on_chain_balance),
+    goal_amount: asNumber(campaignData.goal_amount),
+    deadline: campaignData.deadline ?? undefined,
+    profiles: creator,
+    creator,
+    donations,
+    contributions: donations,
+    campaign_updates: (campaign_updates ?? []).map((u) => ({
       ...u,
-      created_at: u.created_at.toISOString(),
+      created_at: u.created_at,
     })),
   }
 
@@ -58,7 +79,7 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
         campaign={campaign as any}
         contributions={campaign.contributions}
         updates={campaign.campaign_updates || []}
-        currentUser={null}
+        currentUser={currentUser}
       />
     </div>
   )
@@ -66,11 +87,13 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
 
 export async function generateMetadata({ params }: CampaignPageProps) {
   const { id: campaignId } = await params
+  const db = createAdminClient()
 
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: { title: true, description: true, image_url: true },
-  })
+  const { data: campaign } = await db
+    .from("campaigns")
+    .select("title, description, image_url")
+    .eq("id", campaignId)
+    .maybeSingle()
 
   if (!campaign) return { title: "Campaign Not Found" }
 

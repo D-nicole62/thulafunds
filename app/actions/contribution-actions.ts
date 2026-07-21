@@ -1,9 +1,10 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { indexDonationFromTx } from "@/lib/stellar/indexer"
+import { asNumber } from "@/lib/db/helpers"
 
 /** Record an on-chain donation after Soroban deposit() tx is confirmed */
 export async function recordDonation(
@@ -24,24 +25,35 @@ export async function recordDonation(
   revalidatePath("/campaigns")
   revalidatePath(`/campaigns/${campaignId}`)
 
-  return prisma.donation.findUnique({ where: { tx_hash: txHash } })
+  const db = createAdminClient()
+  const { data } = await db.from("donations").select("*").eq("tx_hash", txHash).maybeSingle()
+  return data
 }
 
 export async function getDonationHistory(userId: string) {
-  const donations = await prisma.donation.findMany({
-    where: { contributor_id: userId },
-    include: {
-      campaign: {
-        select: { id: true, title: true, image_url: true },
-      },
-    },
-    orderBy: { created_at: "desc" },
-  })
+  const db = createAdminClient()
+  const { data: donations, error } = await db
+    .from("donations")
+    .select("*")
+    .eq("contributor_id", userId)
+    .order("created_at", { ascending: false })
 
-  return donations.map((d) => {
-    const { campaign, ...rest } = d
-    return { ...rest, amount: Number(rest.amount), campaigns: campaign }
-  })
+  if (error) throw error
+
+  const campaignIds = [...new Set((donations ?? []).map((d) => d.campaign_id))]
+  const { data: campaigns } =
+    campaignIds.length > 0
+      ? await db.from("campaigns").select("id, title, image_url").in("id", campaignIds)
+      : { data: [] }
+
+  const campaignMap = new Map((campaigns ?? []).map((c) => [c.id, c]))
+
+  return (donations ?? []).map((d) => ({
+    ...d,
+    amount: asNumber(d.amount),
+    campaigns: campaignMap.get(d.campaign_id) ?? null,
+    campaign: campaignMap.get(d.campaign_id) ?? null,
+  }))
 }
 
 /** @deprecated Use recordDonation */

@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { asNumber } from "@/lib/db/helpers"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,22 +14,15 @@ interface RecentCampaignsProps {
 
 export async function RecentCampaigns({ userId }: RecentCampaignsProps) {
   try {
-    const campaigns = await prisma.campaign.findMany({
-      where: { creator_id: userId },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        goal_amount: true,
-        current_amount: true,
-        status: true,
-        created_at: true,
-        image_url: true,
-        category: true,
-      },
-      orderBy: { created_at: "desc" },
-      take: 5,
-    })
+    const db = createAdminClient()
+    const { data: campaigns, error } = await db
+      .from("campaigns")
+      .select("id, title, description, goal_amount, current_amount, status, created_at, image_url, category")
+      .eq("creator_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5)
+
+    if (error) throw error
 
     return (
       <Card>
@@ -45,7 +39,7 @@ export async function RecentCampaigns({ userId }: RecentCampaignsProps) {
           {campaigns && campaigns.length > 0 ? (
             <div className="space-y-4">
               {campaigns.map((campaign) => {
-                const progress = (Number(campaign.current_amount || 0) / Number(campaign.goal_amount || 1)) * 100
+                const progress = (asNumber(campaign.current_amount) / asNumber(campaign.goal_amount || 1)) * 100
                 const isCompleted = progress >= 100
 
                 return (

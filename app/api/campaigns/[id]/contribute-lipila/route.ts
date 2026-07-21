@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { upsertProfile, incrementCampaignAmount, nowIso } from "@/lib/db/helpers"
 import {
   LIPILA_API_KEY,
   LIPILA_CURRENCY,
@@ -7,12 +8,6 @@ import {
   isLipilaSuccess,
 } from "@/lib/lipila/config"
 
-/**
- * Record a fiat (Lipila mobile money / card) donation.
- * Unlike the on-chain route, this verifies the payment by re-checking the
- * Lipila collection status server-side, then stores the donation using the
- * Lipila referenceId as the unique tx_hash.
- */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -34,25 +29,25 @@ export async function POST(
 
     const { createClient } = await import("@/lib/supabase/server")
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      select: { id: true },
-    })
+    const db = createAdminClient()
 
-    if (!campaign) {
+    const { data: campaign, error: campaignError } = await db
+      .from("campaigns")
+      .select("id")
+      .eq("id", campaignId)
+      .maybeSingle()
+
+    if (campaignError || !campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    // Idempotency: if we've already recorded this reference, return it.
-    const existing = await prisma.donation.findUnique({ where: { tx_hash: referenceId } })
+    const { data: existing } = await db.from("donations").select("*").eq("tx_hash", referenceId).maybeSingle()
     if (existing) {
       return NextResponse.json({
         success: true,
@@ -61,7 +56,6 @@ export async function POST(
       })
     }
 
-    // Verify the payment with Lipila (never trust the client's success claim).
     const statusRes = await fetch(
       `${LIPILA_ENDPOINTS.status}?referenceId=${encodeURIComponent(referenceId)}`,
       { headers: { accept: "application/json", "x-api-key": LIPILA_API_KEY } },
@@ -83,31 +77,28 @@ export async function POST(
       return NextResponse.json({ error: "Invalid payment amount from gateway" }, { status: 502 })
     }
 
-    await prisma.profile.upsert({
-      where: { id: user.id },
-      create: { id: user.id, full_name: "User" },
-      update: {},
-    })
+    await upsertProfile(user.id)
 
-    const [donation] = await prisma.$transaction([
-      prisma.donation.create({
-        data: {
-          campaign_id: campaignId,
-          contributor_id: user.id,
-          amount,
-          message: message || null,
-          anonymous: anonymous || false,
-          tx_hash: referenceId,
-          payment_method: "lipila",
-          status: "completed",
-          currency: statusData.currency || LIPILA_CURRENCY,
-        },
-      }),
-      prisma.campaign.update({
-        where: { id: campaignId },
-        data: { current_amount: { increment: amount }, updated_at: new Date() },
-      }),
-    ])
+    const { data: donation, error: insertError } = await db
+      .from("donations")
+      .insert({
+        campaign_id: campaignId,
+        contributor_id: user.id,
+        amount,
+        message: message || null,
+        anonymous: anonymous || false,
+        tx_hash: referenceId,
+        payment_method: "lipila",
+        status: "completed",
+        currency: statusData.currency || LIPILA_CURRENCY,
+      })
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    await incrementCampaignAmount(campaignId, amount)
+    await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
 
     return NextResponse.json({
       success: true,

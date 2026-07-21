@@ -6,6 +6,7 @@ import { CampaignProgress } from "./campaign-progress"
 import { CampaignCreator } from "./campaign-creator"
 import { CampaignPaymentInfo } from "./campaign-payment-info"
 import { SorobanActions } from "./soroban-actions"
+import { DeployEscrowCard } from "./deploy-escrow-card"
 import { ContributionForm } from "./contribution-form"
 import { RecentContributions } from "./recent-contributions"
 import { CampaignUpdates } from "./campaign-updates"
@@ -96,6 +97,16 @@ export function CampaignDetailView({
             </Card>
 
             <CampaignPaymentInfo walletAddress={campaign.contract_address || campaign.wallet_address} />
+
+            {!campaign.contract_address &&
+              currentUser?.id === campaign.creator_id && (
+                <DeployEscrowCard
+                  campaignId={campaign.id}
+                  goalAmount={Number(campaign.goal_amount)}
+                  deadline={campaign.deadline}
+                  organizerWallet={campaign.wallet_address}
+                />
+              )}
 
             {campaign.contract_address && (
               <SorobanActions

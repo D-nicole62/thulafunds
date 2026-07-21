@@ -1,58 +1,63 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  getSupabaseAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+  SUPABASE_NOT_CONFIGURED_MESSAGE,
+} from "@/lib/supabase/config"
 
-export async function createClient() {
-    let cookieStore: any;
-    try {
-        cookieStore = await cookies()
-    } catch (e) {
-        // cookies() can throw during static generation
-    }
+function createMockServerClient(): SupabaseClient {
+  const notConfigured = new Error(SUPABASE_NOT_CONFIGURED_MESSAGE)
+  const reject = async () => ({ data: { user: null, session: null }, error: notConfigured })
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return {
+    auth: {
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      getUser: async () => ({ data: { user: null }, error: null }),
+      getSession: async () => ({ data: { session: null }, error: null }),
+      signOut: async () => ({ error: null }),
+      signInWithPassword: reject,
+      signUp: reject,
+      exchangeCodeForSession: reject,
+      resetPasswordForEmail: reject,
+    },
+    storage: {
+      from: () => ({
+        upload: async () => ({ data: null, error: new Error("Supabase storage is not configured") }),
+        getPublicUrl: () => ({ data: { publicUrl: "" } }),
+      }),
+    },
+  } as unknown as SupabaseClient
+}
 
-    // Handle missing or placeholder environment variables during build/prerendering
-    const isPlaceholder = !supabaseUrl || !supabaseAnonKey || supabaseAnonKey === "your-anon-key-here"
+export async function createClient(): Promise<SupabaseClient> {
+  let cookieStore: Awaited<ReturnType<typeof cookies>> | undefined
+  try {
+    cookieStore = await cookies()
+  } catch {
+    // cookies() can throw during static generation
+  }
 
-    if (isPlaceholder) {
-        const notConfigured = new Error("Supabase is not configured.")
-        return {
-            auth: {
-                onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
-                getUser: async () => ({ data: { user: null }, error: null }),
-                signOut: async () => { },
-                exchangeCodeForSession: async () => ({ data: { user: null, session: null }, error: notConfigured }),
-            },
-            storage: {
-                from: () => ({
-                    upload: async () => ({ data: null, error: new Error("Mock Storage") }),
-                    getPublicUrl: () => ({ data: { publicUrl: "" } }),
-                }),
-            },
-        } as any
-    }
+  if (!isSupabaseConfigured()) {
+    return createMockServerClient()
+  }
 
-    return createServerClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore?.getAll() || []
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore?.set(name, value, options)
-                        )
-                    } catch {
-                        // The `setAll` method was called from a Server Component.
-                        // This can be ignored if you have middleware refreshing
-                        // user sessions.
-                    }
-                },
-            },
+  return createServerClient(getSupabaseUrl()!, getSupabaseAnonKey()!, {
+    cookies: {
+      getAll() {
+        return cookieStore?.getAll() ?? []
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore?.set(name, value, options),
+          )
+        } catch {
+          // Called from a Server Component — safe to ignore when middleware refreshes sessions.
         }
-    )
+      },
+    },
+  })
 }

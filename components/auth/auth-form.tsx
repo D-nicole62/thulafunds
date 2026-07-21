@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { isSupabaseConfigured, SUPABASE_NOT_CONFIGURED_MESSAGE } from "@/lib/supabase/config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,14 +36,21 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
     setError("")
 
     try {
+      if (!isSupabaseConfigured()) {
+        setError(SUPABASE_NOT_CONFIGURED_MESSAGE)
+        return
+      }
+
       const supabase = createClient()
-      if (typeof supabase.auth.signInWithPassword !== "function") {
-        setError("Supabase auth is not available. Please check your environment configuration.")
+      const signIn = supabase.auth?.signInWithPassword
+      const signUp = supabase.auth?.signUp
+      if (typeof signIn !== "function" || typeof signUp !== "function") {
+        setError(SUPABASE_NOT_CONFIGURED_MESSAGE)
         return
       }
 
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { error } = await signUp.call(supabase.auth, {
           email,
           password,
           options: {
@@ -55,7 +63,7 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
         router.refresh()
         router.push("/auth/verify-email")
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { error } = await signIn.call(supabase.auth, {
           email,
           password,
         })
@@ -63,8 +71,15 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
         router.refresh()
         router.push("/dashboard")
       }
-    } catch (error: any) {
-      const raw = error?.message || "Something went wrong. Please try again."
+    } catch (error: unknown) {
+      const raw =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      if (raw.includes("signInWithPassword is not a function")) {
+        setError(SUPABASE_NOT_CONFIGURED_MESSAGE)
+        return
+      }
       // A network-level failure means the Supabase backend is unreachable
       // (commonly a paused/deleted project or wrong NEXT_PUBLIC_SUPABASE_URL).
       if (

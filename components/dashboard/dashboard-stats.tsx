@@ -1,7 +1,8 @@
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, Target, Users, TrendingUp } from "lucide-react"
 import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
+import { asNumber } from "@/lib/db/helpers"
 
 interface DashboardStatsProps {
   userId: string
@@ -9,27 +10,17 @@ interface DashboardStatsProps {
 
 export async function DashboardStats({ userId }: DashboardStatsProps) {
   try {
-    // Fetch campaigns created by user
-    const campaigns = await prisma.campaign.findMany({
-      where: { creator_id: userId },
-      select: {
-        current_amount: true,
-        goal_amount: true,
-      },
-    })
+    const db = createAdminClient()
 
-    // Fetch contributions made by user
-    const contributions = await prisma.donation.findMany({
-      where: { contributor_id: userId },
-      select: {
-        amount: true,
-      },
-    })
+    const [{ data: campaigns }, { data: contributions }] = await Promise.all([
+      db.from("campaigns").select("current_amount, goal_amount").eq("creator_id", userId),
+      db.from("donations").select("amount").eq("contributor_id", userId),
+    ])
 
-    const totalRaised = campaigns.reduce((sum, campaign) => sum + Number(campaign.current_amount || 0), 0)
-    const totalGoal = campaigns.reduce((sum, campaign) => sum + Number(campaign.goal_amount || 0), 0)
-    const totalContributed = contributions.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0)
-    const activeCampaigns = campaigns.length
+    const totalRaised = (campaigns ?? []).reduce((sum, campaign) => sum + asNumber(campaign.current_amount), 0)
+    const totalGoal = (campaigns ?? []).reduce((sum, campaign) => sum + asNumber(campaign.goal_amount), 0)
+    const totalContributed = (contributions ?? []).reduce((sum, c) => sum + asNumber(c.amount), 0)
+    const activeCampaigns = campaigns?.length ?? 0
 
     const stats = [
       {
@@ -83,4 +74,3 @@ export async function DashboardStats({ userId }: DashboardStatsProps) {
     )
   }
 }
-

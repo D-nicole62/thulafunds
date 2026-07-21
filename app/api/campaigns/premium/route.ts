@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { asNumber } from "@/lib/db/helpers"
 import { verifyPaymentSession } from "@/lib/payment"
 
 export async function GET(request: NextRequest) {
@@ -26,40 +27,45 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    // 2. Fetch Data with Prisma
-    // Fetch premium campaign features and insights (protected by x402 on mainnet)
-    const campaigns = await prisma.campaign.findMany({
-      where: { status: "active" },
-      orderBy: { created_at: "desc" },
-      include: {
-        creator: {
-          select: {
-            full_name: true,
-            avatar_url: true
-          }
-        },
-        donations: {
-          select: {
-            amount: true,
-            created_at: true,
-            contributor_id: true // Added to match logic in calculateSocialProofScore
-          }
-        }
-      }
-    })
+    const db = createAdminClient()
+    const { data: campaignsRaw, error } = await db
+      .from("campaigns")
+      .select("*")
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
 
-    // Add premium insights to each campaign
-    const premiumCampaigns = campaigns.map((campaign) => {
-      // Map Prisma 'creator' to Supabase 'profiles' shape for compatibility
-      const { creator, ...rest } = campaign
-      const contributions = campaign.donations || []
+    if (error) throw error
+
+    const campaignIds = (campaignsRaw ?? []).map((c) => c.id)
+    const creatorIds = [...new Set((campaignsRaw ?? []).map((c) => c.creator_id))]
+
+    const [{ data: profiles }, { data: allDonations }] = await Promise.all([
+      creatorIds.length > 0
+        ? db.from("profiles").select("id, full_name, avatar_url").in("id", creatorIds)
+        : Promise.resolve({ data: [] }),
+      campaignIds.length > 0
+        ? db.from("donations").select("amount, created_at, contributor_id, campaign_id").in("campaign_id", campaignIds)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
+    const donationsByCampaign = new Map<string, typeof allDonations>()
+    for (const d of allDonations ?? []) {
+      const list = donationsByCampaign.get(d.campaign_id) ?? []
+      list.push(d)
+      donationsByCampaign.set(d.campaign_id, list)
+    }
+
+    const premiumCampaigns = (campaignsRaw ?? []).map((campaign) => {
+      const creator = profileMap.get(campaign.creator_id)
+      const contributions = donationsByCampaign.get(campaign.id) ?? []
 
       const momentum = calculateMomentum(contributions)
       const trendingScore = calculateTrendingScore(campaign, contributions)
 
       return {
-        ...rest,
-        profiles: creator, // Maintain API contract
+        ...campaign,
+        profiles: creator,
         premium_insights: {
           momentum_score: momentum,
           trending_score: trendingScore,
@@ -76,8 +82,8 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.json({
       campaigns: premiumCampaigns,
       insights: {
-        market_trends: await getMarketTrends(),
-        success_factors: await getSuccessFactors(),
+        market_trends: await getMarketTrends(db),
+        success_factors: await getSuccessFactors(db),
         payment_info: {
           network: "Stellar Mainnet",
           currency: "USDC",
@@ -150,31 +156,22 @@ function calculateSocialProofScore(contributions: any[]) {
   return Math.min(100, uniqueContributors * 2 + repeatRate * 50)
 }
 
-async function getMarketTrends() {
-  // Analyze market trends across all campaigns
-  const date30DaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+async function getMarketTrends(db: ReturnType<typeof createAdminClient>) {
+  const date30DaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
-  const allCampaigns = await prisma.campaign.findMany({
-    where: {
-      created_at: {
-        gte: date30DaysAgo
-      }
-    },
-    select: {
-      category: true,
-      current_amount: true,
-      goal_amount: true,
-    }
-  })
+  const { data: allCampaigns } = await db
+    .from("campaigns")
+    .select("category, current_amount, goal_amount")
+    .gte("created_at", date30DaysAgo)
 
-  const categoryTrends = allCampaigns.reduce((acc: any, campaign: any) => {
+  const categoryTrends = (allCampaigns ?? []).reduce((acc: Record<string, { count: number; totalRaised: number; avgSuccess: number }>, campaign) => {
     const category = campaign.category || "Other"
     if (!acc[category]) {
       acc[category] = { count: 0, totalRaised: 0, avgSuccess: 0 }
     }
     acc[category].count++
-    acc[category].totalRaised += Number(campaign.current_amount)
-    acc[category].avgSuccess += (Number(campaign.current_amount) / Number(campaign.goal_amount)) * 100
+    acc[category].totalRaised += asNumber(campaign.current_amount)
+    acc[category].avgSuccess += (asNumber(campaign.current_amount) / asNumber(campaign.goal_amount)) * 100
     return acc
   }, {})
 
@@ -185,24 +182,16 @@ async function getMarketTrends() {
   return categoryTrends
 }
 
-async function getSuccessFactors() {
-  // Analyze what makes campaigns successful
-  // Prisma doesn't support raw referencing fields in comparison easily like `current_amount >= goal_amount * 0.8`
-  // We'll fetch potential candidates or all active and filter in JS for this analytics endpoint, 
-  // or use raw query if performance is critical. For now, JS filter is safer for logic migration.
+async function getSuccessFactors(db: ReturnType<typeof createAdminClient>) {
+  const { data: campaigns } = await db.from("campaigns").select("goal_amount, current_amount")
 
-  const campaigns = await prisma.campaign.findMany({
-    select: {
-      goal_amount: true,
-      current_amount: true
-    }
-  })
-
-  const successfulCampaigns = campaigns.filter(c => Number(c.current_amount) >= Number(c.goal_amount) * 0.8)
+  const successfulCampaigns = (campaigns ?? []).filter(
+    (c) => asNumber(c.current_amount) >= asNumber(c.goal_amount) * 0.8,
+  )
 
   return {
     avg_goal_amount:
-      successfulCampaigns.reduce((sum: number, c: any) => sum + Number(c.goal_amount), 0) / (successfulCampaigns.length || 1),
+      successfulCampaigns.reduce((sum, c) => sum + asNumber(c.goal_amount), 0) / (successfulCampaigns.length || 1),
     common_categories: ["Technology", "Creative", "Community"],
     optimal_duration: "30-45 days",
     key_factors: [

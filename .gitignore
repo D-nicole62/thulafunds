@@ -29,3 +29,6 @@ next-env.d.ts
 # rust / soroban contracts
 contracts/target/
 **/*.rs.bk
+
+.vercel
+.env*.local

@@ -12,6 +12,11 @@ import {
   checkFreighterConnected,
 } from "@/lib/stellar/wallets"
 import { coerceStellarAddress } from "@/lib/stellar/validation"
+import {
+  getFreighterNetworkMismatch,
+  isFreighterNetworkMismatchError,
+  FreighterNetworkMismatchError,
+} from "@/lib/stellar/freighter-network"
 
 interface StellarWalletContextType {
   address: string | null
@@ -30,6 +35,11 @@ interface StellarWalletContextType {
   fundTestnetAccount: () => Promise<void>
   signTransaction: (xdr: string) => Promise<string>
   error: string | null
+  networkMismatch: {
+    appNetworkName: string
+    freighterNetworkName: string
+  } | null
+  refreshFreighterNetwork: () => Promise<void>
 }
 
 const StellarWalletContext = createContext<StellarWalletContextType>({
@@ -53,6 +63,8 @@ const StellarWalletContext = createContext<StellarWalletContextType>({
     throw new Error("Wallet not connected")
   },
   error: null,
+  networkMismatch: null,
+  refreshFreighterNetwork: async () => {},
 })
 
 export const useStellarWallet = () => useContext(StellarWalletContext)
@@ -84,10 +96,30 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   const [accountExists, setAccountExists] = useState(true)
   const [needsFunding, setNeedsFunding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [networkMismatch, setNetworkMismatch] = useState<{
+    appNetworkName: string
+    freighterNetworkName: string
+  } | null>(null)
   const [mounted, setMounted] = useState(false)
   const [walletType, setWalletType] = useState<WalletType>("freighter")
 
   const network = getStellarNetwork()
+
+  const refreshFreighterNetwork = useCallback(async () => {
+    if (walletType !== "freighter") {
+      setNetworkMismatch(null)
+      return
+    }
+    const mismatch = await getFreighterNetworkMismatch()
+    setNetworkMismatch(mismatch)
+    if (mismatch) {
+      setError(
+        mismatch.appNetworkName.includes("Test")
+          ? "Switch Freighter to Test Net to use this app."
+          : "Switch Freighter to Main Net to use this app.",
+      )
+    }
+  }, [walletType])
 
   const applyBalanceResult = useCallback(
     (result: Awaited<ReturnType<typeof fetchBalancesFromApi>>) => {
@@ -95,6 +127,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       setXlmBalance(result.xlm)
       setAccountExists(result.exists)
       setNeedsFunding(result.needsFunding)
+      if (networkMismatch) return
       if (result.needsFunding && network.id === "testnet") {
         setError(
           "This wallet is not funded on Stellar testnet yet. Fund it with test XLM to send transactions.",
@@ -105,7 +138,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
         setError(null)
       }
     },
-    [network.id],
+    [network.id, networkMismatch],
   )
 
   const refreshBalance = useCallback(async () => {
@@ -136,14 +169,22 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       if (normalized) {
         setAddress(normalized)
         setIsConnected(true)
+        await refreshFreighterNetwork()
         const result = await fetchBalancesFromApi(normalized)
         applyBalanceResult(result)
       }
     })
-  }, [applyBalanceResult])
+  }, [applyBalanceResult, refreshFreighterNetwork])
+
+  useEffect(() => {
+    if (isConnected && walletType === "freighter") {
+      void refreshFreighterNetwork()
+    }
+  }, [isConnected, walletType, refreshFreighterNetwork])
 
   const connectWallet = async (type?: WalletType): Promise<string> => {
     setError(null)
+    setNetworkMismatch(null)
     const selected = type || walletType
 
     try {
@@ -154,11 +195,18 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       setAddress(normalized)
       setIsConnected(true)
 
+      await refreshFreighterNetwork()
       const result = await fetchBalancesFromApi(normalized)
       applyBalanceResult(result)
 
       return normalized
     } catch (err: unknown) {
+      if (isFreighterNetworkMismatchError(err)) {
+        setNetworkMismatch({
+          appNetworkName: err.appNetworkName,
+          freighterNetworkName: err.freighterNetworkName,
+        })
+      }
       const message = err instanceof Error ? err.message : "Failed to connect wallet"
       setError(message)
       throw new Error(message)
@@ -167,6 +215,12 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
 
   const signTransaction = async (xdr: string): Promise<string> => {
     if (!address) throw new Error("Wallet not connected")
+    if (networkMismatch) {
+      throw new FreighterNetworkMismatchError(
+        networkMismatch.appNetworkName,
+        networkMismatch.freighterNetworkName,
+      )
+    }
     if (needsFunding) {
       throw new Error(
         network.id === "testnet"
@@ -174,7 +228,17 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
           : "Your wallet account is not active on this network.",
       )
     }
-    return signWithWallet(xdr, address, walletType)
+    try {
+      return await signWithWallet(xdr, address, walletType)
+    } catch (err: unknown) {
+      if (isFreighterNetworkMismatchError(err)) {
+        setNetworkMismatch({
+          appNetworkName: err.appNetworkName,
+          freighterNetworkName: err.freighterNetworkName,
+        })
+      }
+      throw err
+    }
   }
 
   const disconnectWallet = () => {
@@ -184,6 +248,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     setXlmBalance(null)
     setAccountExists(true)
     setNeedsFunding(false)
+    setNetworkMismatch(null)
     setError(null)
   }
 
@@ -196,7 +261,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       value={{
         address,
         isConnected,
-        isReady: isConnected && !!address && accountExists,
+        isReady: isConnected && !!address && accountExists && !networkMismatch,
         balance,
         xlmBalance,
         accountExists,
@@ -210,6 +275,8 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
         fundTestnetAccount,
         signTransaction,
         error,
+        networkMismatch,
+        refreshFreighterNetwork,
       }}
     >
       {children}

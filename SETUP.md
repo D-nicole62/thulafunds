@@ -27,7 +27,8 @@ Progress bars read **live balances from Soroban RPC** — Supabase `on_chain_bal
 
 ```bash
 pnpm install
-pnpm exec prisma generate
+pnpm setup:check
+pnpm db:test
 ```
 
 ## 2. Environment
@@ -39,16 +40,18 @@ NEXT_PUBLIC_STELLAR_NETWORK=testnet          # testnet for dev, public for prod
 NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 NEXT_PUBLIC_USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5R43SA4Q
 NEXT_PUBLIC_USDC_CONTRACT_ID=C...            # USDC SAC on Soroban
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...           # Server only — Settings → API
 NEXT_PUBLIC_CAMPAIGN_FACTORY_ID=C...         # After deploying contracts
-DATABASE_URL=...
 ```
 
 ## 3. Database
 
-Run `scripts/soroban-migration.sql` in Supabase SQL editor, then:
+Run `scripts/soroban-migration.sql` in Supabase SQL Editor (creates tables + RLS). Then verify:
 
 ```bash
-pnpm exec prisma db push   # if DATABASE_URL is set
+pnpm db:test
 ```
 
 ## 4. Deploy Soroban Contracts

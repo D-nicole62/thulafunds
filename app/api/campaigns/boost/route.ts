@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { nowIso } from "@/lib/db/helpers"
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,39 +10,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Campaign ID and boost type are required" }, { status: 400 })
     }
 
-    // Get payment proof from headers
     const paymentProof = request.headers.get("x-payment-proof")
 
     if (!paymentProof) {
       return NextResponse.json({ error: "Payment verification required" }, { status: 402 })
     }
 
-    // Verify campaign exists
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId }
-    })
+    const db = createAdminClient()
+    const { data: campaign, error: campaignError } = await db
+      .from("campaigns")
+      .select("*")
+      .eq("id", campaignId)
+      .maybeSingle()
 
-    if (!campaign) {
+    if (campaignError || !campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    // Create boost record
     const durationHours = duration || 24
-    const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000)
+    const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
 
-    const boost = await prisma.campaignBoost.create({
-      data: {
+    const { data: boost, error: boostError } = await db
+      .from("campaign_boosts")
+      .insert({
         campaign_id: campaignId,
         boost_type: boostType,
         duration_hours: durationHours,
         status: "active",
         payment_proof: paymentProof,
-        expires_at: expiresAt
-      }
-    })
+        expires_at: expiresAt,
+      })
+      .select()
+      .single()
 
-    // Apply boost effects
-    const boostEffects = await applyBoostEffects(campaignId, boostType, expiresAt)
+    if (boostError) throw boostError
+
+    const boostEffects = await applyBoostEffects(db, campaignId, boostType, expiresAt)
 
     return NextResponse.json({
       success: true,
@@ -56,7 +60,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function applyBoostEffects(campaignId: string, boostType: string, expiresAt: Date) {
+async function applyBoostEffects(
+  db: ReturnType<typeof createAdminClient>,
+  campaignId: string,
+  boostType: string,
+  expiresAt: string,
+) {
   const effects = {
     visibility_increase: 0,
     featured_placement: false,
@@ -81,15 +90,15 @@ async function applyBoostEffects(campaignId: string, boostType: string, expiresA
       break
   }
 
-  // Update campaign with boost flags
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: {
+  await db
+    .from("campaigns")
+    .update({
       is_boosted: true,
       boost_type: boostType,
       boost_expires_at: expiresAt,
-    }
-  })
+      updated_at: nowIso(),
+    })
+    .eq("id", campaignId)
 
   return effects
 }

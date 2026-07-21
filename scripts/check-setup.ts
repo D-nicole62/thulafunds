@@ -16,21 +16,18 @@ checks.push({
 })
 
 checks.push({
-  name: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  ok: hasEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", ["your-anon-key"]),
-  hint: "Set your Supabase anon key",
+  name: "NEXT_PUBLIC_SUPABASE_ANON_KEY (or PUBLISHABLE_KEY)",
+  ok:
+    hasEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", ["your-anon-key"]) ||
+    hasEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ||
+    hasEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY"),
+  hint: "Set your Supabase anon or publishable key",
 })
 
 checks.push({
-  name: "DATABASE_URL",
-  ok: hasEnv("DATABASE_URL", ["[YOUR-DB-PASSWORD]", "[password]", "your-"]),
-  hint: "Add Supabase Postgres connection string (Settings → Database)",
-})
-
-checks.push({
-  name: "DIRECT_URL",
-  ok: hasEnv("DIRECT_URL", ["[YOUR-DB-PASSWORD]", "[password]", "your-"]),
-  hint: "Add Supabase direct Postgres connection string",
+  name: "SUPABASE_SERVICE_ROLE_KEY",
+  ok: hasEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  hint: "Server-side DB access — Supabase Dashboard → Settings → API → service_role",
 })
 
 checks.push({

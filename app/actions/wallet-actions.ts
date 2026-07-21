@@ -1,8 +1,9 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { upsertProfile, nowIso } from "@/lib/db/helpers"
 import { isValidStellarAddress, normalizeStellarAddress } from "@/lib/stellar/validation"
 
 export async function updateUserWallet(walletAddress: string) {
@@ -28,22 +29,11 @@ export async function updateUserWallet(walletAddress: string) {
 
     console.log("Updating profile for user:", user.id, "with wallet:", cleanAddress)
 
-    await prisma.profile.upsert({
-      where: { id: user.id },
-      update: {
-        wallet_address: cleanAddress,
-        wallet_type: "freighter",
-        wallet_verified: true,
-        updated_at: new Date(),
-      },
-      create: {
-        id: user.id,
-        wallet_address: cleanAddress,
-        wallet_type: "freighter",
-        wallet_verified: true,
-        updated_at: new Date(),
-        full_name: "Demo User",
-      },
+    await upsertProfile(user.id, {
+      full_name: user.user_metadata?.full_name || "User",
+      wallet_address: cleanAddress,
+      wallet_type: "freighter",
+      wallet_verified: true,
     })
 
     console.log("Wallet updated successfully")
@@ -65,15 +55,14 @@ export async function updateUserWallet(walletAddress: string) {
 
 export async function getUserWallet(userId: string) {
   try {
-    const profile = await prisma.profile.findUnique({
-      where: { id: userId },
-      select: {
-        wallet_address: true,
-        wallet_type: true,
-        wallet_verified: true,
-      },
-    })
+    const db = createAdminClient()
+    const { data: profile, error } = await db
+      .from("profiles")
+      .select("wallet_address, wallet_type, wallet_verified")
+      .eq("id", userId)
+      .maybeSingle()
 
+    if (error) throw error
     return profile || null
   } catch (error) {
     console.error("getUserWallet error:", error)

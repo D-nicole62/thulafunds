@@ -1,48 +1,57 @@
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { getCrowdfundBalance } from "@/lib/stellar/soroban"
 import { verifyTransactionOnHorizon } from "@/lib/stellar/server"
+import { asNumber, incrementCampaignAmount, nowIso } from "@/lib/db/helpers"
 
 /**
  * Sync on-chain escrow balance → Supabase cache (current_amount).
  * Progress bars should read live from Soroban RPC; this keeps DB in sync for lists/dashboard.
  */
 export async function syncCampaignBalance(campaignId: string): Promise<number> {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: { contract_address: true },
-  })
+  const db = createAdminClient()
+  const { data: campaign, error } = await db
+    .from("campaigns")
+    .select("contract_address")
+    .eq("id", campaignId)
+    .single()
 
-  if (!campaign?.contract_address) {
+  if (error || !campaign?.contract_address) {
     throw new Error("Campaign has no Soroban contract address")
   }
 
   const onChainBalance = await getCrowdfundBalance(campaign.contract_address)
 
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: {
+  const { error: updateError } = await db
+    .from("campaigns")
+    .update({
       on_chain_balance: onChainBalance,
       current_amount: onChainBalance,
-      updated_at: new Date(),
-    },
-  })
+      updated_at: nowIso(),
+    })
+    .eq("id", campaignId)
+
+  if (updateError) throw updateError
 
   return onChainBalance
 }
 
 export async function syncAllCampaignBalances(): Promise<number> {
-  const campaigns = await prisma.campaign.findMany({
-    where: { contract_address: { not: null }, status: "active" },
-    select: { id: true },
-  })
+  const db = createAdminClient()
+  const { data: campaigns, error } = await db
+    .from("campaigns")
+    .select("id")
+    .eq("status", "active")
+    .not("contract_address", "is", null)
+
+  if (error) throw error
 
   let synced = 0
-  for (const campaign of campaigns) {
+  for (const campaign of campaigns ?? []) {
     try {
       await syncCampaignBalance(campaign.id)
       synced++
-    } catch (error) {
-      console.error(`Indexer: failed to sync campaign ${campaign.id}:`, error)
+    } catch (err) {
+      console.error(`Indexer: failed to sync campaign ${campaign.id}:`, err)
     }
   }
   return synced
@@ -59,12 +68,14 @@ export async function indexDonationFromTx(
   message?: string,
   anonymous?: boolean,
 ): Promise<void> {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: { contract_address: true },
-  })
+  const db = createAdminClient()
+  const { data: campaign, error } = await db
+    .from("campaigns")
+    .select("contract_address")
+    .eq("id", campaignId)
+    .single()
 
-  if (!campaign?.contract_address) {
+  if (error || !campaign?.contract_address) {
     throw new Error("Campaign contract not found")
   }
 
@@ -78,26 +89,21 @@ export async function indexDonationFromTx(
     throw new Error(verification.error || "Transaction verification failed")
   }
 
-  const existing = await prisma.donation.findUnique({ where: { tx_hash: txHash } })
+  const { data: existing } = await db.from("donations").select("id").eq("tx_hash", txHash).maybeSingle()
   if (existing) return
 
-  await prisma.$transaction([
-    prisma.donation.create({
-      data: {
-        campaign_id: campaignId,
-        contributor_id: contributorId,
-        amount,
-        message: message || null,
-        anonymous: anonymous || false,
-        tx_hash: txHash,
-      },
-    }),
-    prisma.campaign.update({
-      where: { id: campaignId },
-      data: { updated_at: new Date() },
-    }),
-  ])
+  const { error: insertError } = await db.from("donations").insert({
+    campaign_id: campaignId,
+    contributor_id: contributorId,
+    amount,
+    message: message || null,
+    anonymous: anonymous || false,
+    tx_hash: txHash,
+  })
 
+  if (insertError) throw insertError
+
+  await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
   await syncCampaignBalance(campaignId)
 }
 
@@ -110,12 +116,14 @@ export async function indexDirectDonationFromTx(
   message?: string,
   anonymous?: boolean,
 ): Promise<void> {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: { wallet_address: true },
-  })
+  const db = createAdminClient()
+  const { data: campaign, error } = await db
+    .from("campaigns")
+    .select("wallet_address, current_amount")
+    .eq("id", campaignId)
+    .single()
 
-  if (!campaign?.wallet_address) {
+  if (error || !campaign?.wallet_address) {
     throw new Error("Campaign has no recipient wallet")
   }
 
@@ -129,29 +137,28 @@ export async function indexDirectDonationFromTx(
     throw new Error(verification.error || "Transaction verification failed")
   }
 
-  const existing = await prisma.donation.findUnique({ where: { tx_hash: txHash } })
+  const { data: existing } = await db.from("donations").select("id").eq("tx_hash", txHash).maybeSingle()
   if (existing) return
 
-  await prisma.$transaction([
-    prisma.donation.create({
-      data: {
-        campaign_id: campaignId,
-        contributor_id: contributorId,
-        amount,
-        message: message || null,
-        anonymous: anonymous || false,
-        tx_hash: txHash,
-        payment_method: "stellar_direct",
-        status: "completed",
-        currency: "USDC",
-      },
-    }),
-    prisma.campaign.update({
-      where: { id: campaignId },
-      data: {
-        current_amount: { increment: amount },
-        updated_at: new Date(),
-      },
-    }),
-  ])
+  const { error: insertError } = await db.from("donations").insert({
+    campaign_id: campaignId,
+    contributor_id: contributorId,
+    amount,
+    message: message || null,
+    anonymous: anonymous || false,
+    tx_hash: txHash,
+    payment_method: "stellar_direct",
+    status: "completed",
+    currency: "USDC",
+  })
+
+  if (insertError) throw insertError
+
+  await db
+    .from("campaigns")
+    .update({
+      current_amount: asNumber(campaign.current_amount) + amount,
+      updated_at: nowIso(),
+    })
+    .eq("id", campaignId)
 }

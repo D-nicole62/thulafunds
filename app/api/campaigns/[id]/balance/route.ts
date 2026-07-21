@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { asNumber } from "@/lib/db/helpers"
 import { getCrowdfundBalance, getCrowdfundGoal } from "@/lib/stellar/soroban"
 import { syncCampaignBalance } from "@/lib/stellar/indexer"
 
@@ -10,24 +11,21 @@ export async function GET(
   try {
     const { id } = await params
 
-    const campaign = await prisma.campaign.findUnique({
-      where: { id },
-      select: {
-        contract_address: true,
-        goal_amount: true,
-        on_chain_balance: true,
-        current_amount: true,
-      },
-    })
+    const db = createAdminClient()
+    const { data: campaign, error } = await db
+      .from("campaigns")
+      .select("contract_address, goal_amount, on_chain_balance, current_amount")
+      .eq("id", id)
+      .maybeSingle()
 
-    if (!campaign) {
+    if (error || !campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
     if (!campaign.contract_address) {
       return NextResponse.json({
-        balance: Number(campaign.current_amount),
-        goal: Number(campaign.goal_amount),
+        balance: asNumber(campaign.current_amount),
+        goal: asNumber(campaign.goal_amount),
         source: "cache",
       })
     }
@@ -35,7 +33,7 @@ export async function GET(
     const [balance, goal] = await Promise.all([
       getCrowdfundBalance(campaign.contract_address),
       getCrowdfundGoal(campaign.contract_address).catch(
-        () => Number(campaign.goal_amount),
+        () => asNumber(campaign.goal_amount),
       ),
     ])
 

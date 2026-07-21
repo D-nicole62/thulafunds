@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { nowIso } from "@/lib/db/helpers"
 
 /** Register Soroban contract address after factory deployment */
 export async function POST(
@@ -22,33 +23,38 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const campaign = await prisma.campaign.findUnique({ where: { id } })
-    if (!campaign || campaign.creator_id !== user.id) {
+    const db = createAdminClient()
+    const { data: campaign, error: fetchError } = await db.from("campaigns").select("*").eq("id", id).maybeSingle()
+
+    if (fetchError || !campaign || campaign.creator_id !== user.id) {
       return NextResponse.json({ error: "Not found or unauthorized" }, { status: 403 })
     }
 
-    const updated = await prisma.campaign.update({
-      where: { id },
-      data: {
+    const { data: updated, error: updateError } = await db
+      .from("campaigns")
+      .update({
         contract_address,
-        deadline: deadline ? new Date(deadline) : campaign.deadline,
+        deadline: deadline ? new Date(deadline).toISOString() : campaign.deadline,
         payment_method: "soroban_escrow",
-        updated_at: new Date(),
-      },
-    })
+        updated_at: nowIso(),
+      })
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
 
     if (deploy_tx_hash) {
-      await prisma.paymentSession.upsert({
-        where: { tx_hash: deploy_tx_hash },
-        create: {
+      await db.from("payment_sessions").upsert(
+        {
           tx_hash: deploy_tx_hash,
           endpoint: `/api/campaigns/${id}/contract`,
           status: "completed",
           amount: 0,
           from_address: campaign.wallet_address,
         },
-        update: { status: "completed" },
-      })
+        { onConflict: "tx_hash" },
+      )
     }
 
     return NextResponse.json({

@@ -1,45 +1,49 @@
 import { createBrowserClient } from "@supabase/ssr"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  getSupabaseAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+  SUPABASE_NOT_CONFIGURED_MESSAGE,
+} from "@/lib/supabase/config"
 
-const notConfiguredError = new Error(
-    "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment."
-)
+const notConfiguredError = new Error(SUPABASE_NOT_CONFIGURED_MESSAGE)
 
-function createMockClient() {
-    return {
-        auth: {
-            onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-            getUser: async () => ({ data: { user: null }, error: null }),
-            signOut: async () => {},
-            signInWithPassword: async () => ({ data: { user: null, session: null }, error: notConfiguredError }),
-            signUp: async () => ({ data: { user: null, session: null }, error: notConfiguredError }),
-            exchangeCodeForSession: async () => ({ data: { user: null, session: null }, error: notConfiguredError }),
-        },
-        storage: {
-            from: () => ({
-                upload: async () => ({ data: null, error: new Error("Mock Storage") }),
-                getPublicUrl: () => ({ data: { publicUrl: "" } }),
-            }),
-        },
-    } as ReturnType<typeof createBrowserClient>
+function createMockClient(): SupabaseClient {
+  const reject = async () => ({ data: { user: null, session: null }, error: notConfiguredError })
+
+  return {
+    auth: {
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      getUser: async () => ({ data: { user: null }, error: null }),
+      getSession: async () => ({ data: { session: null }, error: null }),
+      signOut: async () => ({ error: null }),
+      signInWithPassword: reject,
+      signUp: reject,
+      exchangeCodeForSession: reject,
+      resetPasswordForEmail: reject,
+    },
+    storage: {
+      from: () => ({
+        upload: async () => ({ data: null, error: new Error("Supabase storage is not configured") }),
+        getPublicUrl: () => ({ data: { publicUrl: "" } }),
+      }),
+    },
+  } as unknown as SupabaseClient
 }
 
-export function createClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+let browserClient: SupabaseClient | undefined
 
-    const isPlaceholder = !supabaseUrl || !supabaseAnonKey || supabaseAnonKey === "your-anon-key-here"
+export function createClient(): SupabaseClient {
+  if (!isSupabaseConfigured()) {
+    return createMockClient()
+  }
 
-    if (isPlaceholder) {
-        return createMockClient()
-    }
+  if (!browserClient) {
+    browserClient = createBrowserClient(getSupabaseUrl()!, getSupabaseAnonKey()!, {
+      isSingleton: true,
+    })
+  }
 
-    try {
-        const client = createBrowserClient(supabaseUrl, supabaseAnonKey)
-        if (typeof client?.auth?.signInWithPassword !== "function") {
-            return createMockClient()
-        }
-        return client
-    } catch {
-        return createMockClient()
-    }
+  return browserClient
 }

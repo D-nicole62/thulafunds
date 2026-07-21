@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { asNumber } from "@/lib/db/helpers"
 import { verifyPaymentSession } from "@/lib/payment"
 
 export async function GET(request: NextRequest) {
@@ -28,36 +29,33 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    // Fetch detailed analytics data
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      include: {
-        donations: {
-          select: {
-            amount: true,
-            created_at: true,
-            contributor_id: true
-          }
-        }
-      }
-    })
+    const db = createAdminClient()
+    const { data: campaign, error: campaignError } = await db
+      .from("campaigns")
+      .select("*")
+      .eq("id", campaignId)
+      .maybeSingle()
 
-    if (!campaign) {
+    if (campaignError || !campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    // Calculate detailed metrics
-    const contributions = campaign.donations || []
+    const { data: donations } = await db
+      .from("donations")
+      .select("amount, created_at, contributor_id")
+      .eq("campaign_id", campaignId)
+
+    const contributions = donations ?? []
     const dailyContributions = contributions.reduce((acc: any, contrib: any) => {
       const date = new Date(contrib.created_at).toISOString().split("T")[0]
-      acc[date] = (acc[date] || 0) + Number(contrib.amount)
+      acc[date] = (acc[date] || 0) + asNumber(contrib.amount)
       return acc
     }, {})
 
     const uniqueContributors = new Set(contributions.map((c: any) => c.contributor_id)).size
     const averageContribution =
       contributions.length > 0
-        ? contributions.reduce((sum: number, c: any) => sum + Number(c.amount), 0) / contributions.length
+        ? contributions.reduce((sum: number, c) => sum + asNumber(c.amount), 0) / contributions.length
         : 0
 
     const analytics = {
@@ -71,7 +69,7 @@ export async function GET(request: NextRequest) {
         total_contributions: contributions.length,
         unique_contributors: uniqueContributors,
         average_contribution: averageContribution,
-        completion_rate: (Number(campaign.current_amount) / Number(campaign.goal_amount)) * 100,
+        completion_rate: (asNumber(campaign.current_amount) / asNumber(campaign.goal_amount)) * 100,
       },
       daily_contributions: dailyContributions,
       growth_rate: calculateGrowthRate(contributions),

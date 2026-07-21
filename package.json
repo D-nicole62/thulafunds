@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "prisma generate && next build",
+    "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "postinstall": "prisma generate",
-    "setup": "pnpm install && prisma generate",
+    "setup": "pnpm install",
     "setup:check": "tsx scripts/check-setup.ts",
+    "env:vercel": "powershell -ExecutionPolicy Bypass -File scripts/sync-vercel-env.ps1",
     "setup:storage": "tsx scripts/setup-storage.ts",
     "db:test": "tsx scripts/test-db-connection.ts",
     "indexer": "tsx scripts/indexer.ts",
@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
-    "@prisma/client": "^5.22.0",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
@@ -61,11 +60,9 @@
     "embla-carousel-react": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
-    "mysql2": "^3.16.0",
     "next": "16.1.6",
     "next-themes": "latest",
     "pino-pretty": "^13.0.0",
-    "prisma": "^5.22.0",
     "react": "^19",
     "react-day-picker": "latest",
     "react-dom": "^19",
@@ -80,9 +77,6 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
       "sharp",
       "esbuild"
     ]
@@ -92,7 +86,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8.5",
-    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.4",
     "typescript": "^5"

@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useOnchain } from "@/components/providers/onchain-provider"
 import { useStellarWallet } from "@/components/providers/stellar-wallet-provider"
 import { formatStellarAddressShort } from "@/lib/stellar/validation"
+import { FreighterNetworkAlert } from "@/components/web3/freighter-network-alert"
 import {
   Wallet,
   CheckCircle,
@@ -42,6 +43,8 @@ export function SmartWalletConnect({
     xlmBalance,
     fundTestnetAccount,
     error: walletError,
+    networkMismatch,
+    refreshFreighterNetwork,
   } = useStellarWallet()
   const [isFunding, setIsFunding] = useState(false)
 
@@ -89,7 +92,14 @@ export function SmartWalletConnect({
         err instanceof Error ? err.message : "Failed to connect wallet"
 
       let errorMessage = message
-      if (message.toLowerCase().includes("cancelled") || message.toLowerCase().includes("canceled")) {
+      if (
+        message.toLowerCase().includes("not currently connected") ||
+        message.toLowerCase().includes("not granted") ||
+        message.toLowerCase().includes("access was not granted")
+      ) {
+        errorMessage =
+          "Freighter is not connected to this site yet. Click Connect Freighter Wallet below, then approve localhost in the Freighter popup. Also unlock Freighter and switch it to Test Net."
+      } else if (message.toLowerCase().includes("cancelled") || message.toLowerCase().includes("canceled")) {
         errorMessage = "Wallet connection was cancelled. Please try again."
       } else if (message.toLowerCase().includes("freighter")) {
         errorMessage = message
@@ -117,6 +127,33 @@ export function SmartWalletConnect({
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (networkMismatch) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Switch Freighter Network
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <FreighterNetworkAlert
+            appNetworkName={networkMismatch.appNetworkName}
+            freighterNetworkName={networkMismatch.freighterNetworkName}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => void refreshFreighterNetwork()}
+          >
+            I switched networks — check again
+          </Button>
         </CardContent>
       </Card>
     )

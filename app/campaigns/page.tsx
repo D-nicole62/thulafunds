@@ -1,42 +1,41 @@
-import { prisma } from "@/lib/prisma"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { CampaignGrid } from "@/components/campaigns/campaign-grid"
 import { CampaignFilters } from "@/components/campaigns/campaign-filters"
 import { Button } from "@/components/ui/button"
 import { Plus, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { asNumber } from "@/lib/db/helpers"
 
 export const dynamic = "force-dynamic"
 
 export default async function CampaignsPage() {
   try {
-    const campaignsData = await prisma.campaign.findMany({
-      where: { status: "active" },
-      orderBy: { created_at: "desc" },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        goal_amount: true,
-        current_amount: true,
-        image_url: true,
-        category: true,
-        created_at: true,
-        creator: {
-          select: {
-            full_name: true,
-            avatar_url: true
-          }
-        }
-      }
-    })
+    const db = createAdminClient()
+    const { data: campaignsData, error } = await db
+      .from("campaigns")
+      .select(
+        "id, title, description, goal_amount, current_amount, image_url, category, created_at, creator_id",
+      )
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
 
-    // Map Prisma result to match the structure expected by components
-    const campaigns = campaignsData.map(c => ({
+    if (error) throw error
+
+    const creatorIds = [...new Set((campaignsData ?? []).map((c) => c.creator_id))]
+    const { data: profiles } =
+      creatorIds.length > 0
+        ? await db.from("profiles").select("id, full_name, avatar_url").in("id", creatorIds)
+        : { data: [] }
+
+    const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
+
+    const campaigns = (campaignsData ?? []).map((c) => ({
       ...c,
-      profiles: c.creator,
-      goal_amount: Number(c.goal_amount),
-      current_amount: Number(c.current_amount)
+      creator: profileMap.get(c.creator_id) ?? null,
+      profiles: profileMap.get(c.creator_id) ?? null,
+      goal_amount: asNumber(c.goal_amount),
+      current_amount: asNumber(c.current_amount),
     }))
 
     return (
