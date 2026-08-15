@@ -32,7 +32,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
               <ul className="list-inside list-disc space-y-1">
                 <li>Check your spam or junk folder</li>
                 <li>Make sure you entered the correct address</li>
-                <li>Wait a few minutes before requesting another email</li>
+                <li>If the link opens localhost, request a new verification email below</li>
               </ul>
             </div>
 

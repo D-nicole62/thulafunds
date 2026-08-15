@@ -4,6 +4,7 @@ import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfigured } from "@/lib/supabase/config"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
+import { getClientAuthCallbackUrl } from "@/lib/auth-redirect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,7 +42,7 @@ export function ResendVerificationForm({ initialEmail = "" }: ResendVerification
         type: "signup",
         email: email.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: getClientAuthCallbackUrl(),
         },
       })
 

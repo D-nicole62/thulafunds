@@ -1,19 +1,21 @@
 import { createClient } from "@/lib/supabase/server"
+import { getSiteOrigin } from "@/lib/auth-redirect"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const code = searchParams.get("code")
-  const next = searchParams.get("next") ?? "/dashboard"
-  const origin = request.headers.get("origin") ?? new URL(request.url).origin
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get("code")
+  const next = requestUrl.searchParams.get("next") ?? "/dashboard"
+  const siteOrigin = getSiteOrigin(requestUrl.origin)
 
   if (code) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      return NextResponse.redirect(`${siteOrigin}${next}`)
     }
+    console.error("Auth callback exchangeCodeForSession error:", error.message)
   }
 
-  return NextResponse.redirect(`${origin}/auth/login?error=auth_callback_error`)
+  return NextResponse.redirect(`${siteOrigin}/auth/login?error=auth_callback_error`)
 }
