@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { upsertProfile, nowIso } from "@/lib/db/helpers"
+import { upsertProfile, nowIso, newRowId } from "@/lib/db/helpers"
 
 export async function createCampaignAction(formData: FormData) {
   try {
@@ -123,9 +123,12 @@ export async function createCampaignAction(formData: FormData) {
 
     console.log("Validation passed, inserting campaign...")
 
+    const campaignId = newRowId()
+
     const { data, error } = await db
       .from("campaigns")
       .insert({
+        id: campaignId,
         title: title.trim(),
         description: description.trim(),
         goal_amount: goalAmountNum,

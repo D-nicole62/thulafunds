@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Profile } from "@/lib/db/types"
 
@@ -7,6 +8,11 @@ export function asNumber(value: string | number | null | undefined): number {
 
 export function nowIso(): string {
   return new Date().toISOString()
+}
+
+/** Primary key for tables where Supabase/Postgres may lack a gen_random_uuid() default. */
+export function newRowId(): string {
+  return randomUUID()
 }
 
 /** Ensure a profile row exists for an auth user. */
