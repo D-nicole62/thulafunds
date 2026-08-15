@@ -18,6 +18,10 @@ interface WalletSetupStepProps {
   required?: boolean
   /** When true, Freighter must be connected (required for Soroban escrow deploy). */
   requireSignerConnection?: boolean
+  /** Hide Freighter / browser wallet connect UI (manual address only). */
+  showFreighterConnect?: boolean
+  onSkip?: () => void
+  skipLabel?: string
 }
 
 interface UserWallet {
@@ -30,6 +34,9 @@ export function WalletSetupStep({
   onComplete,
   required = true,
   requireSignerConnection = false,
+  showFreighterConnect = true,
+  onSkip,
+  skipLabel = "Skip wallet — accept mobile money & card only",
 }: WalletSetupStepProps) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [isValidated, setIsValidated] = useState(false)
@@ -238,18 +245,25 @@ export function WalletSetupStep({
       )}
 
       {/* Smart Wallet Connection */}
-      <div className="relative">
-        <div className="absolute inset-x-0 top-1/2 transform -translate-y-1/2">
-          <div className="flex items-center">
-            <div className="flex-1 border-t border-gray-300" />
-            {/* <span className="px-3 text-sm text-gray-500 bg-white">or connect your wallet</span> */}
-            <div className="flex-1 border-t border-gray-300" />
+      {showFreighterConnect && (
+        <div className="relative">
+          <div className="absolute inset-x-0 top-1/2 transform -translate-y-1/2">
+            <div className="flex items-center">
+              <div className="flex-1 border-t border-gray-300" />
+              <div className="flex-1 border-t border-gray-300" />
+            </div>
+          </div>
+          <div className="pt-8">
+            <SmartWalletConnect onConnect={handleWalletConnect} />
           </div>
         </div>
-        <div className="pt-8">
-          <SmartWalletConnect onConnect={handleWalletConnect} />
-        </div>
-      </div>
+      )}
+
+      {onSkip && (
+        <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={onSkip}>
+          {skipLabel}
+        </Button>
+      )}
 
       {isValidated && walletAddress && (
         <Card className="border-green-200 bg-green-50">

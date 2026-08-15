@@ -12,8 +12,7 @@ export default function CreateCampaignPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">Create Your Campaign</h1>
             <p className="text-muted-foreground">
-              Share your story and start raising funds for your cause. Set up your USDC wallet to receive payments
-              directly.
+              Share your story and start raising funds. Choose mobile money, card, or Stellar — Freighter is optional.
             </p>
           </div>
           <CampaignCreateWrapper />

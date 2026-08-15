@@ -52,7 +52,8 @@ export async function createCampaignAction(formData: FormData) {
     const description = formData.get("description") as string
     const goalAmount = formData.get("goalAmount") as string
     const category = formData.get("category") as string
-    const walletAddress = formData.get("walletAddress") as string
+    const walletAddressRaw = formData.get("walletAddress") as string
+    const payoutMethod = (formData.get("payoutMethod") as string) || "stellar"
     const deadlineRaw = formData.get("deadline") as string
     const imageFile = formData.get("image") as File | null
 
@@ -60,18 +61,41 @@ export async function createCampaignAction(formData: FormData) {
     if (!description?.trim()) return { error: "Campaign description is required", success: false }
     if (!goalAmount) return { error: "Goal amount is required", success: false }
     if (!category) return { error: "Category is required", success: false }
-    if (!walletAddress) return { error: "Wallet address is required", success: false }
     if (!deadlineRaw) return { error: "Campaign deadline is required", success: false }
+
+    const acceptsLipila = payoutMethod === "lipila" || payoutMethod === "both"
+    const acceptsStellar = payoutMethod === "stellar" || payoutMethod === "both"
+
+    if (!acceptsLipila && !acceptsStellar) {
+      return { error: "Choose how you want to receive donations", success: false }
+    }
+
+    let normalizedWallet: string | null = null
+    if (acceptsStellar && walletAddressRaw?.trim()) {
+      const { isValidStellarAddress, normalizeStellarAddress } = await import("@/lib/stellar/validation")
+      normalizedWallet = normalizeStellarAddress(walletAddressRaw)
+      if (!isValidStellarAddress(normalizedWallet)) {
+        return { error: "Invalid Stellar wallet address format", success: false }
+      }
+    } else if (payoutMethod === "stellar" && !walletAddressRaw?.trim()) {
+      return {
+        error: "Add a Stellar wallet address or choose mobile money & card (Lipila) instead",
+        success: false,
+      }
+    }
+
+    let paymentMethod: string
+    if (payoutMethod === "lipila" || (!normalizedWallet && acceptsLipila)) {
+      paymentMethod = "lipila"
+    } else if (normalizedWallet) {
+      paymentMethod = "stellar_direct"
+    } else {
+      paymentMethod = "lipila"
+    }
 
     const deadline = new Date(deadlineRaw + "T23:59:59Z")
     if (isNaN(deadline.getTime()) || deadline <= new Date()) {
       return { error: "Deadline must be a future date", success: false }
-    }
-
-    const { isValidStellarAddress, normalizeStellarAddress } = await import("@/lib/stellar/validation")
-    const normalizedWallet = normalizeStellarAddress(walletAddress)
-    if (!isValidStellarAddress(normalizedWallet)) {
-      return { error: "Invalid Stellar wallet address format", success: false }
     }
 
     const goalAmountNum = Number.parseFloat(goalAmount)
@@ -109,7 +133,7 @@ export async function createCampaignAction(formData: FormData) {
         category,
         image_url: imageUrl || null,
         wallet_address: normalizedWallet,
-        payment_method: "soroban_escrow",
+        payment_method: paymentMethod,
         deadline: deadline.toISOString(),
         creator_id: user.id,
         status: "active",
@@ -135,18 +159,20 @@ export async function createCampaignAction(formData: FormData) {
 
     console.log("Campaign created successfully:", data)
 
-    try {
-      await db
-        .from("profiles")
-        .update({
-          wallet_address: normalizedWallet,
-          wallet_type: "freighter",
-          wallet_verified: true,
-          updated_at: nowIso(),
-        })
-        .eq("id", user.id)
-    } catch (profileError) {
-      console.warn("Failed to update profile wallet:", profileError)
+    if (normalizedWallet) {
+      try {
+        await db
+          .from("profiles")
+          .update({
+            wallet_address: normalizedWallet,
+            wallet_type: "freighter",
+            wallet_verified: true,
+            updated_at: nowIso(),
+          })
+          .eq("id", user.id)
+      } catch (profileError) {
+        console.warn("Failed to update profile wallet:", profileError)
+      }
     }
 
     try {

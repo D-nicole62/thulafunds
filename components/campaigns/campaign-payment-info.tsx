@@ -48,8 +48,9 @@ export function CampaignPaymentInfo({ walletAddress }: CampaignPaymentInfoProps)
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-muted-foreground">
-            No wallet address configured for this campaign.
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>This campaign accepts donations via mobile money and card (Lipila).</p>
+            <p>No Stellar wallet is required for the organizer.</p>
           </div>
         </CardContent>
       </Card>

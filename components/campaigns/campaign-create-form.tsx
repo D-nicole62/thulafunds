@@ -30,7 +30,13 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle,
+  Smartphone,
+  CreditCard,
+  Coins,
 } from "lucide-react"
+
+const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
+type CampaignPayoutMethod = "lipila" | "stellar" | "both"
 
 export function CampaignCreateForm() {
   const [currentStep, setCurrentStep] = useState(1)
@@ -38,8 +44,10 @@ export function CampaignCreateForm() {
   const [deployingEscrow, setDeployingEscrow] = useState(false)
   const [error, setError] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [payoutMethod, setPayoutMethod] = useState<CampaignPayoutMethod>("lipila")
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [isWalletConnected, setIsWalletConnected] = useState(false)
+  const [connectFreighter, setConnectFreighter] = useState(false)
   const { deployCampaignEscrow } = useOnchain()
   const { connectWallet, address: connectedAddress, isConnected, needsFunding } = useStellarWallet()
   const escrowEnabled = isSorobanEscrowConfigured()
@@ -70,17 +78,34 @@ export function CampaignCreateForm() {
   }
 
   const handleWalletComplete = (address: string) => {
-    console.log("Wallet completed with address:", address)
     setWalletAddress(address)
     setIsWalletConnected(true)
+  }
+
+  const handleSkipWallet = () => {
+    setPayoutMethod("lipila")
+    setWalletAddress(null)
+    setIsWalletConnected(false)
+    setConnectFreighter(false)
+    setError("")
+  }
+
+  const handlePayoutMethodChange = (method: CampaignPayoutMethod) => {
+    setPayoutMethod(method)
+    setError("")
+    if (method === "lipila") {
+      setWalletAddress(null)
+      setIsWalletConnected(false)
+      setConnectFreighter(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     console.log("Form submission started")
 
-    if (!walletAddress) {
-      setError("Please connect your wallet to receive payments")
+    if (payoutMethod !== "lipila" && !walletAddress) {
+      setError("Add a Stellar wallet address or choose mobile money & card (Lipila) instead")
       return
     }
 
@@ -121,8 +146,11 @@ export function CampaignCreateForm() {
         throw new Error("Deadline must be a future date")
       }
 
-      // Add wallet address to form data
-      formData.append("walletAddress", walletAddress)
+      // Add payout details to form data
+      formData.append("payoutMethod", payoutMethod)
+      if (walletAddress) {
+        formData.append("walletAddress", walletAddress)
+      }
 
       console.log("Calling createCampaignAction with FormData")
 
@@ -134,7 +162,14 @@ export function CampaignCreateForm() {
       }
 
       if (result.campaignId) {
-        if (escrowEnabled) {
+        const shouldDeployEscrow =
+          escrowEnabled &&
+          walletAddress &&
+          payoutMethod !== "lipila" &&
+          connectFreighter &&
+          isConnected
+
+        if (shouldDeployEscrow) {
           setDeployingEscrow(true)
           try {
             let signerAddress = connectedAddress
@@ -184,7 +219,11 @@ export function CampaignCreateForm() {
     }
   }
 
-  const canProceedToStep2 = walletAddress && isWalletConnected
+  const needsWallet = payoutMethod === "stellar" || payoutMethod === "both"
+  const canProceedToStep2 =
+    payoutMethod === "lipila" ||
+    (payoutMethod === "both" && !walletAddress) ||
+    (needsWallet && Boolean(walletAddress && isWalletConnected))
   const canSubmit = canProceedToStep2
 
   return (
@@ -196,9 +235,9 @@ export function CampaignCreateForm() {
             className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 1 ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
               }`}
           >
-            {isWalletConnected ? <CheckCircle className="h-4 w-4" /> : "1"}
+            {canProceedToStep2 ? <CheckCircle className="h-4 w-4" /> : "1"}
           </div>
-          <span className="ml-2 font-medium">Wallet Setup</span>
+          <span className="ml-2 font-medium">Receive funds</span>
         </div>
         <div className={`w-8 h-0.5 ${currentStep >= 2 ? "bg-primary" : "bg-muted-foreground"}`}></div>
         <div className={`flex items-center ${currentStep >= 2 ? "text-primary" : "text-muted-foreground"}`}>
@@ -212,23 +251,106 @@ export function CampaignCreateForm() {
         </div>
       </div>
 
-      {/* Step 1: Wallet Setup */}
+      {/* Step 1: Payout method */}
       {currentStep === 1 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-primary" />
-              Step 1: Setup Payment Wallet
+              Step 1: How will you receive donations?
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <WalletSetupStep
-              onComplete={handleWalletComplete}
-              required={true}
-              requireSignerConnection={escrowEnabled}
-            />
+          <CardContent className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Choose the same options donors see — mobile money, card, or Stellar wallet. Freighter is optional.
+            </p>
 
-            <div className="flex justify-end mt-6">
+            <div className="grid gap-3">
+              <button
+                type="button"
+                onClick={() => handlePayoutMethodChange("lipila")}
+                className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                  payoutMethod === "lipila" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+              >
+                <div className="mt-0.5 flex gap-1">
+                  <Smartphone className="h-5 w-5 text-primary" />
+                  <CreditCard className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">Mobile money &amp; card (Lipila)</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    No Freighter or crypto wallet needed. Donors pay via {LIPILA_CURRENCY} mobile money or card.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePayoutMethodChange("stellar")}
+                className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                  payoutMethod === "stellar" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+              >
+                <Coins className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Stellar USDC wallet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Paste a Stellar address or connect Freighter later. Escrow deploy is optional.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePayoutMethodChange("both")}
+                className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                  payoutMethod === "both" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+              >
+                <DollarSign className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">All payment methods</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Lipila for mobile/card donors; add a Stellar wallet below if you also want crypto donations.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {needsWallet && (
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-medium">Stellar wallet (optional for &quot;All methods&quot;)</Label>
+                  {!connectFreighter && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setConnectFreighter(true)}
+                    >
+                      Connect Freighter
+                    </Button>
+                  )}
+                </div>
+                <WalletSetupStep
+                  onComplete={handleWalletComplete}
+                  required={payoutMethod === "stellar"}
+                  requireSignerConnection={false}
+                  showFreighterConnect={connectFreighter}
+                  onSkip={handleSkipWallet}
+                  skipLabel="Skip wallet — use mobile money & card only"
+                />
+              </div>
+            )}
+
+            {payoutMethod === "lipila" && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+                You can create your campaign now without connecting Freighter. Donors will contribute via Lipila.
+              </div>
+            )}
+
+            <div className="flex justify-end">
               <Button onClick={() => setCurrentStep(2)} disabled={!canProceedToStep2} className="min-w-32">
                 Next Step
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -413,32 +535,38 @@ export function CampaignCreateForm() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       {deployingEscrow ? "Deploying Soroban Escrow..." : "Creating Campaign..."}
                     </>
+                  ) : payoutMethod === "lipila" ? (
+                    "Create Campaign"
+                  ) : connectFreighter && escrowEnabled ? (
+                    "Create Campaign & Deploy Escrow"
                   ) : (
-                    escrowEnabled ? "Create Campaign & Deploy Escrow" : "Create Campaign"
+                    "Create Campaign"
                   )}
                 </Button>
               </div>
 
               {/* Payment Info */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">Payment Information:</h4>
+                <h4 className="font-semibold text-blue-900 mb-2">How donors can pay:</h4>
                 <ul className="text-sm text-blue-800 space-y-1">
-                  {escrowEnabled ? (
+                  {(payoutMethod === "lipila" || payoutMethod === "both") && (
                     <>
-                      <li>• A Soroban escrow contract will be deployed for this campaign (requires wallet signature)</li>
-                      <li>• Donations are held in escrow until the goal is met or the deadline passes</li>
-                      <li>• Your connected wallet ({walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}) receives funds on successful withdrawal</li>
-                    </>
-                  ) : (
-                    <>
-                      <li>
-                        • Contributors will send USDC directly to your wallet: {walletAddress?.slice(0, 6)}...
-                        {walletAddress?.slice(-4)}
-                      </li>
-                      <li>• Deploy the campaign factory (see contracts/README.md) to enable Soroban escrow</li>
+                      <li>• Mobile money &amp; card via Lipila ({LIPILA_CURRENCY}) — no Freighter required</li>
                     </>
                   )}
-                  <li>• Mobile money and card donations are also available via Lipila</li>
+                  {walletAddress && payoutMethod !== "lipila" && (
+                    <>
+                      <li>
+                        • USDC to your Stellar wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                      </li>
+                      {connectFreighter && escrowEnabled && (
+                        <li>• Optional Soroban escrow deploy when Freighter is connected at submit</li>
+                      )}
+                    </>
+                  )}
+                  {payoutMethod === "both" && !walletAddress && (
+                    <li>• Stellar/crypto donations can be enabled later by adding a wallet on your campaign</li>
+                  )}
                 </ul>
               </div>
             </form>
