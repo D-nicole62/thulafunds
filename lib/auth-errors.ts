@@ -38,5 +38,9 @@ export function getAuthErrorMessage(error: unknown): string {
     return "Please confirm your email before signing in. Check your inbox for the verification link."
   }
 
+  if (lower.includes("otp_expired") || lower.includes("invalid or has expired")) {
+    return "Your verification link has expired. Request a new verification email."
+  }
+
   return raw
 }

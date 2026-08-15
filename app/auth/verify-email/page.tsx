@@ -2,14 +2,17 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ResendVerificationForm } from "@/components/auth/resend-verification-form"
+import { getAuthUrlErrorMessage } from "@/lib/auth-url-errors"
 import { MailCheck } from "lucide-react"
 
 interface VerifyEmailPageProps {
-  searchParams: Promise<{ email?: string }>
+  searchParams: Promise<{ email?: string; error?: string }>
 }
 
 export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageProps) {
-  const { email } = await searchParams
+  const { email, error } = await searchParams
+  const expiredMessage =
+    error === "otp_expired" ? getAuthUrlErrorMessage({ errorCode: "otp_expired" }) : null
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30">
@@ -27,6 +30,12 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {expiredMessage && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {expiredMessage}
+              </div>
+            )}
+
             <div className="rounded-md bg-muted/50 p-4 text-sm text-muted-foreground">
               <p className="mb-2 font-medium text-foreground">Didn't get the email?</p>
               <ul className="list-inside list-disc space-y-1">
