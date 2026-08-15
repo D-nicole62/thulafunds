@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfigured, SUPABASE_NOT_CONFIGURED_MESSAGE } from "@/lib/supabase/config"
+import { getAuthErrorMessage } from "@/lib/auth-errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -54,6 +55,7 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
           email,
           password,
           options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
             data: {
               full_name: fullName,
             },
@@ -61,7 +63,7 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
         })
         if (error) throw error
         router.refresh()
-        router.push("/auth/verify-email")
+        router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`)
       } else {
         const { error } = await signIn.call(supabase.auth, {
           email,
@@ -72,28 +74,12 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
         router.push("/dashboard")
       }
     } catch (error: unknown) {
-      const raw =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again."
-      if (raw.includes("signInWithPassword is not a function")) {
+      const message = getAuthErrorMessage(error)
+      if (message.includes("Authentication is not configured")) {
         setError(SUPABASE_NOT_CONFIGURED_MESSAGE)
         return
       }
-      // A network-level failure means the Supabase backend is unreachable
-      // (commonly a paused/deleted project or wrong NEXT_PUBLIC_SUPABASE_URL).
-      if (
-        raw === "Failed to fetch" ||
-        raw.toLowerCase().includes("failed to fetch") ||
-        raw.toLowerCase().includes("networkerror") ||
-        raw.toLowerCase().includes("fetch failed")
-      ) {
-        setError(
-          "Can't reach the authentication server. The backend may be paused or misconfigured. Please try again shortly.",
-        )
-      } else {
-        setError(raw)
-      }
+      setError(message)
     } finally {
       setLoading(false)
     }

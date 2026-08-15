@@ -84,6 +84,22 @@ Only Stellar-native: **XLM** (fees) and **USDC** (Circle issuer on Stellar).
 
 Deploy Supabase Edge Function `supabase/functions/send-email` with `RESEND_API_KEY` for donation receipts and campaign updates.
 
+### Auth emails (signup verification)
+
+Supabase’s **built-in email service** allows only a few auth emails per hour. If users see **“email rate limit exceeded”** on signup, configure **custom SMTP** in Supabase:
+
+1. Supabase Dashboard → **Project Settings** → **Authentication** → **SMTP Settings**
+2. Enable custom SMTP and use [Resend SMTP](https://resend.com/docs/send-with-smtp):
+   - **Host:** `smtp.resend.com`
+   - **Port:** `465` (SSL) or `587` (TLS)
+   - **Username:** `resend`
+   - **Password:** your `RESEND_API_KEY`
+   - **Sender email:** a verified address (e.g. `noreply@thulafunds.com`)
+3. Authentication → **URL Configuration**: add `https://thulafunds.com/auth/callback` to **Redirect URLs**
+4. Save and redeploy if env vars changed
+
+Until SMTP is configured, wait ~1 hour after hitting the limit before retrying signup or resend.
+
 ## Verify setup
 
 ```bash

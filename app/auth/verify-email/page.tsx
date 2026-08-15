@@ -1,9 +1,16 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ResendVerificationForm } from "@/components/auth/resend-verification-form"
 import { MailCheck } from "lucide-react"
 
-export default function VerifyEmailPage() {
+interface VerifyEmailPageProps {
+  searchParams: Promise<{ email?: string }>
+}
+
+export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageProps) {
+  const { email } = await searchParams
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30">
       <div className="w-full max-w-md">
@@ -14,7 +21,9 @@ export default function VerifyEmailPage() {
             </div>
             <CardTitle className="text-2xl">Check your email</CardTitle>
             <CardDescription>
-              We've sent you a confirmation link. Click it to verify your account and finish signing up.
+              {email
+                ? `We've sent a confirmation link to ${email}. Click it to verify your account and finish signing up.`
+                : "We've sent you a confirmation link. Click it to verify your account and finish signing up."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -23,9 +32,11 @@ export default function VerifyEmailPage() {
               <ul className="list-inside list-disc space-y-1">
                 <li>Check your spam or junk folder</li>
                 <li>Make sure you entered the correct address</li>
-                <li>Wait a minute and refresh your inbox</li>
+                <li>Wait a few minutes before requesting another email</li>
               </ul>
             </div>
+
+            <ResendVerificationForm initialEmail={email ?? ""} />
 
             <Button asChild className="w-full">
               <Link href="/auth/login">Go to Sign In</Link>
