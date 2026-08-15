@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ResendVerificationForm } from "@/components/auth/resend-verification-form"
+import { SupabaseAuthSetupNotice } from "@/components/auth/supabase-auth-setup-notice"
 import { getAuthUrlErrorMessage } from "@/lib/auth-url-errors"
 import { MailCheck } from "lucide-react"
 
@@ -46,6 +47,8 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
             </div>
 
             <ResendVerificationForm initialEmail={email ?? ""} />
+
+            <SupabaseAuthSetupNotice />
 
             <Button asChild className="w-full">
               <Link href="/auth/login">Go to Sign In</Link>

@@ -44,6 +44,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...           # Server only — Settings → API
 NEXT_PUBLIC_APP_URL=https://thulafunds.com   # Production site URL for auth email links
+NEXT_PUBLIC_PRODUCTION_URL=https://thulafunds.com   # Auth callbacks always use this in production
 NEXT_PUBLIC_CAMPAIGN_FACTORY_ID=C...         # After deploying contracts
 ```
 
