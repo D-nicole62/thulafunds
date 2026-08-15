@@ -1,29 +1,30 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function uploadFile(file: File, bucket: string = "campaigns"): Promise<string> {
-    const supabase = await createClient()
+  const supabase = createAdminClient()
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
+  const bytes = await file.arrayBuffer()
+  const buffer = Buffer.from(bytes)
 
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`
-    const filePath = fileName
+  const fileExt = file.name.split(".").pop() || "jpg"
+  const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`
+  const filePath = fileName
 
-    const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, buffer, {
-            contentType: file.type,
-            upsert: false
-        })
+  const { error } = await supabase.storage.from(bucket).upload(filePath, buffer, {
+    contentType: file.type || "image/jpeg",
+    upsert: false,
+  })
 
-    if (error) {
-        throw new Error(`Upload failed: ${error.message}`)
+  if (error) {
+    if (error.message.toLowerCase().includes("bucket not found")) {
+      throw new Error("Bucket not found")
     }
+    throw new Error(`Upload failed: ${error.message}`)
+  }
 
-    const { data: { publicUrl } } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(filePath)
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from(bucket).getPublicUrl(filePath)
 
-    return publicUrl
+  return publicUrl
 }

@@ -161,6 +161,10 @@ export function CampaignCreateForm() {
         throw new Error(result.error || "Failed to create campaign")
       }
 
+      if (result.warning) {
+        console.warn("Campaign created with warning:", result.warning)
+      }
+
       if (result.campaignId) {
         const shouldDeployEscrow =
           escrowEnabled &&

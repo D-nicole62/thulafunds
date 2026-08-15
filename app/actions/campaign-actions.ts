@@ -104,6 +104,7 @@ export async function createCampaignAction(formData: FormData) {
     }
 
     let imageUrl = ""
+    let imageUploadWarning: string | undefined
     if (imageFile && imageFile.size > 0 && imageFile.name !== "undefined") {
       try {
         const { uploadFile } = await import("@/lib/file-upload")
@@ -112,13 +113,11 @@ export async function createCampaignAction(formData: FormData) {
         const msg = uploadError instanceof Error ? uploadError.message : "Image upload failed"
         console.error("Image upload failed:", uploadError)
         if (msg.includes("Bucket not found")) {
-          return {
-            error:
-              "Image storage is not set up. Run `pnpm setup:storage` or create a public 'campaigns' bucket in Supabase Storage, then try again. You can also create the campaign without an image.",
-            success: false,
-          }
+          imageUploadWarning =
+            "Image storage is not set up — campaign created without a photo. Run `pnpm setup:storage` or add an image later from campaign edit."
+        } else {
+          imageUploadWarning = `Image could not be uploaded (${msg}) — campaign created without a photo.`
         }
-        return { error: `Failed to upload image: ${msg}`, success: false }
       }
     }
 
@@ -187,6 +186,7 @@ export async function createCampaignAction(formData: FormData) {
       success: true,
       data,
       campaignId: data.id,
+      warning: imageUploadWarning,
     }
   } catch (error) {
     console.error("createCampaignAction error:", error)
