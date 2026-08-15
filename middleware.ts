@@ -39,8 +39,10 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Protected Routes requiring Auth
-  const authProtectedRoutes = ["/dashboard", "/campaigns/create", "/wallet"]
-  const isAuthProtected = authProtectedRoutes.some(path => pathname.startsWith(path))
+  const authProtectedRoutes = ["/dashboard", "/campaigns/create", "/campaigns/manage", "/wallet"]
+  const isAuthProtected =
+    authProtectedRoutes.some((path) => pathname.startsWith(path)) ||
+    /^\/campaigns\/[^/]+\/edit\/?$/.test(pathname)
 
   if (isAuthProtected && !user) {
     const url = request.nextUrl.clone()

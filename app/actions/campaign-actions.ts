@@ -176,13 +176,38 @@ export async function updateCampaign(campaignId: string, formData: FormData) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) throw new Error("User not authenticated")
+    if (!user) {
+      return { success: false, error: "You must be logged in to update a campaign" }
+    }
 
     const title = formData.get("title") as string
     const description = formData.get("description") as string
     const goalAmount = formData.get("goalAmount") as string
     const category = formData.get("category") as string
-    const imageUrl = formData.get("imageUrl") as string
+    const existingImageUrl = formData.get("imageUrl") as string
+    const imageFile = formData.get("image") as File | null
+
+    if (!title?.trim()) return { success: false, error: "Campaign title is required" }
+    if (!description?.trim()) return { success: false, error: "Campaign description is required" }
+    if (!goalAmount) return { success: false, error: "Goal amount is required" }
+    if (!category) return { success: false, error: "Category is required" }
+
+    const goalAmountNum = Number.parseFloat(goalAmount)
+    if (isNaN(goalAmountNum) || goalAmountNum < 100 || goalAmountNum > 1000000) {
+      return { success: false, error: "Goal amount must be between $100 and $1,000,000" }
+    }
+
+    let imageUrl = existingImageUrl || ""
+    if (imageFile && imageFile.size > 0 && imageFile.name !== "undefined") {
+      try {
+        const { uploadFile } = await import("@/lib/file-upload")
+        imageUrl = await uploadFile(imageFile)
+      } catch (uploadError: unknown) {
+        const msg = uploadError instanceof Error ? uploadError.message : "Image upload failed"
+        console.error("Image upload failed:", uploadError)
+        return { success: false, error: `Failed to upload image: ${msg}` }
+      }
+    }
 
     const db = createAdminClient()
     const { data, error } = await db
@@ -190,7 +215,7 @@ export async function updateCampaign(campaignId: string, formData: FormData) {
       .update({
         title: title.trim(),
         description: description.trim(),
-        goal_amount: Number.parseFloat(goalAmount),
+        goal_amount: goalAmountNum,
         category,
         image_url: imageUrl || null,
         updated_at: nowIso(),
@@ -200,16 +225,23 @@ export async function updateCampaign(campaignId: string, formData: FormData) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      return { success: false, error: `Failed to update campaign: ${error.message}` }
+    }
 
     revalidatePath("/dashboard")
     revalidatePath("/campaigns")
+    revalidatePath("/campaigns/manage")
     revalidatePath(`/campaigns/${campaignId}`)
+    revalidatePath(`/campaigns/${campaignId}/edit`)
 
-    return data
+    return { success: true, data }
   } catch (error) {
     console.error("updateCampaign error:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "An unexpected error occurred while updating the campaign",
+    }
   }
 }
 
@@ -218,7 +250,9 @@ export async function deleteCampaign(campaignId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) throw new Error("User not authenticated")
+    if (!user) {
+      return { success: false, error: "You must be logged in to delete a campaign" }
+    }
 
     const db = createAdminClient()
     const { error } = await db
@@ -227,14 +261,22 @@ export async function deleteCampaign(campaignId: string) {
       .eq("id", campaignId)
       .eq("creator_id", user.id)
 
-    if (error) throw error
+    if (error) {
+      return { success: false, error: `Failed to delete campaign: ${error.message}` }
+    }
 
     revalidatePath("/dashboard")
     revalidatePath("/campaigns")
+    revalidatePath("/campaigns/manage")
+    revalidatePath(`/campaigns/${campaignId}`)
+    revalidatePath(`/campaigns/${campaignId}/edit`)
 
     return { success: true }
   } catch (error) {
     console.error("deleteCampaign error:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "An unexpected error occurred while deleting the campaign",
+    }
   }
 }
