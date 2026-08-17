@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getCrowdfundBalance } from "@/lib/stellar/soroban"
 import { verifyTransactionOnHorizon } from "@/lib/stellar/server"
-import { asNumber, incrementCampaignAmount, nowIso } from "@/lib/db/helpers"
+import { insertDonation, nowIso } from "@/lib/db/helpers"
 
 /**
  * Sync on-chain escrow balance → Supabase cache (current_amount).
@@ -92,7 +92,7 @@ export async function indexDonationFromTx(
   const { data: existing } = await db.from("donations").select("id").eq("tx_hash", txHash).maybeSingle()
   if (existing) return
 
-  const { error: insertError } = await db.from("donations").insert({
+  await insertDonation({
     campaign_id: campaignId,
     contributor_id: contributorId,
     amount,
@@ -100,8 +100,6 @@ export async function indexDonationFromTx(
     anonymous: anonymous || false,
     tx_hash: txHash,
   })
-
-  if (insertError) throw insertError
 
   await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
   await syncCampaignBalance(campaignId)
@@ -140,7 +138,7 @@ export async function indexDirectDonationFromTx(
   const { data: existing } = await db.from("donations").select("id").eq("tx_hash", txHash).maybeSingle()
   if (existing) return
 
-  const { error: insertError } = await db.from("donations").insert({
+  await insertDonation({
     campaign_id: campaignId,
     contributor_id: contributorId,
     amount,
@@ -152,13 +150,5 @@ export async function indexDirectDonationFromTx(
     currency: "USDC",
   })
 
-  if (insertError) throw insertError
-
-  await db
-    .from("campaigns")
-    .update({
-      current_amount: asNumber(campaign.current_amount) + amount,
-      updated_at: nowIso(),
-    })
-    .eq("id", campaignId)
+  await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
 }

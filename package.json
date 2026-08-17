@@ -12,6 +12,7 @@
     "env:vercel": "powershell -ExecutionPolicy Bypass -File scripts/sync-vercel-env.ps1",
     "setup:storage": "tsx scripts/setup-storage.ts",
     "db:test": "tsx scripts/test-db-connection.ts",
+    "db:donations": "tsx scripts/test-donations-table.ts",
     "indexer": "tsx scripts/indexer.ts",
     "contracts:build": "cd contracts && cargo build --target wasm32v1-none --release",
     "contracts:deploy": "tsx scripts/deploy-soroban-contracts.ts",

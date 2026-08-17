@@ -56,6 +56,29 @@ Run `scripts/soroban-migration.sql` in Supabase SQL Editor (creates tables + RLS
 pnpm db:test
 ```
 
+### Lipila donations (“Failed to record donation”)
+
+If mobile money or card payments succeed in Lipila but the site shows **Failed to record donation**, run **`scripts/fix-donations-schema.sql`** in the Supabase SQL Editor. It:
+
+- Renames `contributions` → `donations` if needed
+- Adds `tx_hash`, `payment_method`, `status`, `currency`
+- Fixes the `update_campaign_amount()` trigger (legacy trigger still queried `contributions`, which breaks inserts)
+- Sets a UUID default on `donations.id`
+
+Then verify:
+
+```bash
+pnpm db:donations
+```
+
+Ensure Vercel production env includes:
+
+```bash
+LIPILA_API_KEY=...
+LIPILA_API_BASE=https://blz.lipila.io
+NEXT_PUBLIC_LIPILA_CURRENCY=ZMW
+```
+
 ## 4. Deploy Soroban Contracts
 
 ```bash

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { upsertProfile } from "@/lib/db/helpers"
 import { indexDonationFromTx, indexDirectDonationFromTx } from "@/lib/stellar/indexer"
 import { getTxExplorerUrl } from "@/lib/stellar/config"
+import { getApiErrorMessage } from "@/lib/db-errors"
 
 export async function POST(
   request: NextRequest,
@@ -80,7 +81,7 @@ export async function POST(
     })
   } catch (error) {
     console.error("Donation indexing error:", error)
-    const msg = error instanceof Error ? error.message : "Failed to record donation"
+    const msg = getApiErrorMessage(error, "Failed to record donation")
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

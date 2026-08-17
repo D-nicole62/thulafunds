@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { upsertProfile, incrementCampaignAmount, nowIso } from "@/lib/db/helpers"
+import { getApiErrorMessage } from "@/lib/db-errors"
+import { insertDonation, upsertProfile, nowIso } from "@/lib/db/helpers"
 import {
   LIPILA_API_KEY,
   LIPILA_CURRENCY,
@@ -79,25 +80,19 @@ export async function POST(
 
     await upsertProfile(user.id)
 
-    const { data: donation, error: insertError } = await db
-      .from("donations")
-      .insert({
-        campaign_id: campaignId,
-        contributor_id: user.id,
-        amount,
-        message: message || null,
-        anonymous: anonymous || false,
-        tx_hash: referenceId,
-        payment_method: "lipila",
-        status: "completed",
-        currency: statusData.currency || LIPILA_CURRENCY,
-      })
-      .select()
-      .single()
+    const donation = await insertDonation({
+      campaign_id: campaignId,
+      contributor_id: user.id,
+      amount,
+      message: message || null,
+      anonymous: anonymous || false,
+      tx_hash: referenceId,
+      payment_method: "lipila",
+      status: "completed",
+      currency: statusData.currency || LIPILA_CURRENCY,
+    })
 
-    if (insertError) throw insertError
-
-    await incrementCampaignAmount(campaignId, amount)
+    // Trigger on_donation_created recalculates current_amount from SUM(donations).
     await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
 
     return NextResponse.json({
@@ -113,7 +108,7 @@ export async function POST(
     })
   } catch (error) {
     console.error("Lipila donation recording error:", error)
-    const msg = error instanceof Error ? error.message : "Failed to record donation"
+    const msg = getApiErrorMessage(error, "Failed to record donation")
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

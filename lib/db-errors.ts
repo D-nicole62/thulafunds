@@ -16,7 +16,20 @@ export function getDatabaseErrorMessage(error: unknown): string {
   if (isDatabaseUnreachableError(error)) {
     return "Cannot reach your Supabase database. Free-tier projects pause after inactivity — open the Supabase Dashboard, restore the project, then verify NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
   }
-  return error instanceof Error ? error.message : "Unknown database error"
+  return formatPostgresError(error) ?? "Unknown database error"
+}
+
+/** Combine Supabase/PostgREST error fields into one user-facing string. */
+export function formatPostgresError(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null
+  const e = error as { message?: string; details?: string; hint?: string; code?: string }
+  const parts = [e.message, e.details, e.hint].filter(Boolean)
+  if (parts.length === 0) return null
+  return parts.join(" — ")
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  return formatPostgresError(error) ?? (error instanceof Error ? error.message : fallback)
 }
 
 export const DATABASE_SETUP_STEPS = [
