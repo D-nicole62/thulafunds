@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -108,6 +109,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
     if (Number(amount) > 10000) {
       setError("Contribution amount cannot exceed 10,000")
+      return
+    }
+
+    if ((payMethod === "lipila" || payMethod === "card") && !currentUser) {
+      setError("Please sign in before paying with mobile money or card so your donation is recorded.")
       return
     }
 
@@ -929,6 +935,21 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             )}
           </div>
         </div>
+
+        {!currentUser && (payMethod === "lipila" || payMethod === "card") && (
+          <Alert className="mb-4 border-amber-200 bg-amber-50">
+            <AlertCircle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-900">
+              Sign in before donating with mobile money or card so your payment is linked to this campaign.{" "}
+              <Link
+                href={`/auth/login?next=${encodeURIComponent(`/campaigns/${campaign.id}`)}`}
+                className="font-medium underline underline-offset-2"
+              >
+                Sign in
+              </Link>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <form id="contribution-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

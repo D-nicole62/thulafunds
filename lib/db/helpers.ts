@@ -65,6 +65,29 @@ export async function insertDonation(row: DonationInsert): Promise<Donation> {
   return data as Donation
 }
 
+/** Set campaigns.current_amount from SUM(donations) — reliable when DB trigger is missing. */
+export async function syncCampaignAmountFromDonations(campaignId: string): Promise<number> {
+  const db = createAdminClient()
+  const { data: donations, error: sumError } = await db
+    .from("donations")
+    .select("amount, status")
+    .eq("campaign_id", campaignId)
+
+  if (sumError) throw sumError
+
+  const total = (donations ?? [])
+    .filter((d) => !d.status || d.status === "completed")
+    .reduce((sum, d) => sum + asNumber(d.amount), 0)
+
+  const { error: updateError } = await db
+    .from("campaigns")
+    .update({ current_amount: total, updated_at: nowIso() })
+    .eq("id", campaignId)
+
+  if (updateError) throw updateError
+  return total
+}
+
 /** Increment campaign.current_amount by delta. */
 export async function incrementCampaignAmount(campaignId: string, delta: number): Promise<void> {
   const db = createAdminClient()

@@ -6,6 +6,7 @@ import { Plus, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { asNumber } from "@/lib/db/helpers"
+import { isCompletedDonation } from "@/lib/format-donation"
 
 export const dynamic = "force-dynamic"
 
@@ -15,12 +16,25 @@ export default async function CampaignsPage() {
     const { data: campaignsData, error } = await db
       .from("campaigns")
       .select(
-        "id, title, description, goal_amount, current_amount, image_url, category, created_at, creator_id",
+        "id, title, description, goal_amount, current_amount, image_url, category, created_at, creator_id, contract_address, payment_method",
       )
       .eq("status", "active")
       .order("created_at", { ascending: false })
 
     if (error) throw error
+
+    const campaignIds = (campaignsData ?? []).map((c) => c.id)
+    const { data: donationsRaw } =
+      campaignIds.length > 0
+        ? await db.from("donations").select("campaign_id, amount, status").in("campaign_id", campaignIds)
+        : { data: [] }
+
+    const raisedByCampaign = new Map<string, number>()
+    for (const d of donationsRaw ?? []) {
+      if (!isCompletedDonation(d.status)) continue
+      const id = d.campaign_id
+      raisedByCampaign.set(id, (raisedByCampaign.get(id) ?? 0) + asNumber(d.amount))
+    }
 
     const creatorIds = [...new Set((campaignsData ?? []).map((c) => c.creator_id))]
     const { data: profiles } =
@@ -30,13 +44,19 @@ export default async function CampaignsPage() {
 
     const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
 
-    const campaigns = (campaignsData ?? []).map((c) => ({
-      ...c,
-      creator: profileMap.get(c.creator_id) ?? null,
-      profiles: profileMap.get(c.creator_id) ?? null,
-      goal_amount: asNumber(c.goal_amount),
-      current_amount: asNumber(c.current_amount),
-    }))
+    const campaigns = (campaignsData ?? []).map((c) => {
+      const fromDonations = raisedByCampaign.get(c.id) ?? 0
+      const cached = asNumber(c.current_amount)
+      const current_amount = c.contract_address ? cached : Math.max(cached, fromDonations)
+      return {
+        ...c,
+        creator: profileMap.get(c.creator_id) ?? null,
+        profiles: profileMap.get(c.creator_id) ?? null,
+        goal_amount: asNumber(c.goal_amount),
+        current_amount,
+        payment_method: c.payment_method,
+      }
+    })
 
     return (
       <div className="min-h-screen bg-muted/30">

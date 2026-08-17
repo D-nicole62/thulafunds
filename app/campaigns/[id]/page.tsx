@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignDetailView } from "@/components/campaigns/campaign-detail-view"
-import { asNumber } from "@/lib/db/helpers"
+import { asNumber, syncCampaignAmountFromDonations } from "@/lib/db/helpers"
 import { isCompletedDonation } from "@/lib/format-donation"
 import type { Donation, Profile } from "@/lib/db/types"
 
@@ -60,15 +60,27 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
   const donations = (donationsRaw ?? [])
     .filter((d) => isCompletedDonation(d.status))
     .map((d: Donation) => ({
-    ...d,
-    amount: asNumber(d.amount),
-    profiles: contributorMap.get(d.contributor_id) ?? null,
-    contributor: contributorMap.get(d.contributor_id) ?? null,
-  }))
+      ...d,
+      amount: asNumber(d.amount),
+      profiles: contributorMap.get(d.contributor_id) ?? null,
+      contributor: contributorMap.get(d.contributor_id) ?? null,
+    }))
+
+  const donationsTotal = donations.reduce((sum, d) => sum + d.amount, 0)
+  const cachedAmount = asNumber(campaignData.current_amount)
+  const hasEscrow = Boolean(campaignData.contract_address)
+  const displayAmount = hasEscrow ? cachedAmount : Math.max(cachedAmount, donationsTotal)
+
+  // Keep lipila-only campaign totals in sync when trigger/backfill was missed.
+  if (!hasEscrow && donationsTotal > cachedAmount) {
+    await syncCampaignAmountFromDonations(campaignId).catch((err) => {
+      console.error("Campaign amount sync failed:", err)
+    })
+  }
 
   const campaign = {
     ...campaignData,
-    current_amount: asNumber(campaignData.current_amount),
+    current_amount: displayAmount,
     on_chain_balance: asNumber(campaignData.on_chain_balance),
     goal_amount: asNumber(campaignData.goal_amount),
     deadline: campaignData.deadline ?? undefined,

@@ -88,3 +88,15 @@ CREATE POLICY "Anyone can view donations" ON donations FOR SELECT USING (true);
 CREATE POLICY "Users can create donations" ON donations FOR INSERT WITH CHECK (
   auth.uid() = contributor_id OR contributor_id IS NULL
 );
+
+-- 7. Backfill campaign totals for lipila / non-escrow campaigns
+UPDATE campaigns c
+SET
+  current_amount = COALESCE((
+    SELECT SUM(d.amount)
+    FROM donations d
+    WHERE d.campaign_id = c.id
+      AND (d.status IS NULL OR d.status = 'completed')
+  ), 0),
+  updated_at = NOW()
+WHERE c.contract_address IS NULL;

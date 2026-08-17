@@ -81,6 +81,7 @@ export interface CampaignProgressProps {
     current_amount: number
     goal_amount: number
     contract_address?: string
+    wallet_address?: string
     deadline?: string
     donations?: Donation[]
     contributions?: Donation[]

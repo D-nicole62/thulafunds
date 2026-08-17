@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getApiErrorMessage } from "@/lib/db-errors"
-import { insertDonation, upsertProfile, nowIso } from "@/lib/db/helpers"
+import { insertDonation, upsertProfile, nowIso, syncCampaignAmountFromDonations } from "@/lib/db/helpers"
 import {
   LIPILA_API_KEY,
   LIPILA_CURRENCY,
@@ -93,7 +93,7 @@ export async function POST(
       currency: statusData.currency || LIPILA_CURRENCY,
     })
 
-    // Trigger on_donation_created recalculates current_amount from SUM(donations).
+    await syncCampaignAmountFromDonations(campaignId)
     await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
 
     revalidatePath("/dashboard")

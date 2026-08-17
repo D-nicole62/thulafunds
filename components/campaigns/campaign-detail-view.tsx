@@ -85,6 +85,7 @@ export function CampaignDetailView({
                     current_amount: campaign.current_amount,
                     goal_amount: campaign.goal_amount,
                     contract_address: campaign.contract_address,
+                    wallet_address: campaign.wallet_address,
                     deadline: campaign.deadline,
                     donations: campaign.donations || campaign.contributions || [],
                     created_at: campaign.created_at,
