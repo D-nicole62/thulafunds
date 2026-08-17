@@ -124,6 +124,7 @@ Supabase’s **built-in email service** allows only a few auth emails per hour. 
    - **Site URL:** `https://thulafunds.com` (must not be `localhost` in production)
    - **Redirect URLs:** add all of:
      - `https://thulafunds.com/auth/callback`
+     - `https://www.thulafunds.com/auth/callback`
      - `http://localhost:3000/auth/callback`
      - `http://localhost:3001/auth/callback`
 4. Set `NEXT_PUBLIC_APP_URL=https://thulafunds.com` in Vercel and redeploy

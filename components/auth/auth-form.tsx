@@ -18,9 +18,11 @@ import { Loader2 } from "lucide-react"
 interface AuthFormProps {
   mode: "login" | "signup"
   initialError?: string
+  /** Path after successful login (default /dashboard). */
+  redirectTo?: string
 }
 
-export function AuthForm({ mode, initialError }: AuthFormProps) {
+export function AuthForm({ mode, initialError, redirectTo = "/dashboard" }: AuthFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
@@ -71,8 +73,11 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
           password,
         })
         if (error) throw error
-        router.refresh()
-        router.push("/dashboard")
+        const destination =
+          redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard"
+        // Full navigation so middleware sees the new session cookies.
+        window.location.assign(destination)
+        return
       }
     } catch (error: unknown) {
       const message = getAuthErrorMessage(error)
@@ -91,7 +96,16 @@ export function AuthForm({ mode, initialError }: AuthFormProps) {
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">{mode === "login" ? "Welcome back" : "Create your account"}</CardTitle>
         <CardDescription>
-          {mode === "login" ? <>Sign in to your <span className="text-pink-500 font-medium">Thula Funds</span> account</> : "Start your crowdfunding journey today"}
+          {mode === "login" ? (
+            <>
+              Sign in to your <span className="text-pink-500 font-medium">Thula Funds</span> account
+              {redirectTo !== "/dashboard" && (
+                <span className="block mt-1 text-xs">Sign in to continue to your dashboard.</span>
+              )}
+            </>
+          ) : (
+            "Start your crowdfunding journey today"
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>

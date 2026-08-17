@@ -51,6 +51,9 @@ export function DashboardHeader() {
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
+                <Link href="/dashboard/contributions">Donation Activity</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/profile">Profile Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
