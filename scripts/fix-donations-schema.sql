@@ -32,6 +32,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS donations_tx_hash_idx ON donations(tx_hash) WH
 
 -- 3. Lipila / payment metadata columns
 ALTER TABLE donations
+  ADD COLUMN IF NOT EXISTS donor_name TEXT,
   ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'soroban_escrow',
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed',
   ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USDC';

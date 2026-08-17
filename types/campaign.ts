@@ -34,7 +34,8 @@ export interface Campaign {
 export interface Donation {
   id: string
   campaign_id: string
-  contributor_id?: string
+  contributor_id?: string | null
+  donor_name?: string | null
   amount: number
   message?: string
   anonymous: boolean

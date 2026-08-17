@@ -53,6 +53,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [transactionStatus, setTransactionStatus] = useState<"pending" | "completed">("completed")
   const [payMethod, setPayMethod] = useState<PayMethod>("lipila")
   const [phone, setPhone] = useState("")
+  const [guestName, setGuestName] = useState("")
   const [lipilaStage, setLipilaStage] = useState<"idle" | "prompting" | "waiting">("idle")
 
   const completeDonation = () => {
@@ -109,11 +110,6 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
     if (Number(amount) > 10000) {
       setError("Contribution amount cannot exceed 10,000")
-      return
-    }
-
-    if ((payMethod === "lipila" || payMethod === "card") && !currentUser) {
-      setError("Please sign in before paying with mobile money or card so your donation is recorded.")
       return
     }
 
@@ -193,11 +189,16 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     return false
   }
 
-  const recordLipilaDonation = async (referenceId: string) => {
+  const recordLipilaDonation = async (referenceId: string, donorName?: string) => {
     const recordRes = await fetch(`/api/campaigns/${campaign.id}/contribute-lipila`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ referenceId, message: message.trim() || undefined, anonymous }),
+      body: JSON.stringify({
+        referenceId,
+        message: message.trim() || undefined,
+        anonymous,
+        donorName: donorName?.trim() || undefined,
+      }),
     })
     if (!recordRes.ok) {
       const errorData = await recordRes.json().catch(() => ({}))
@@ -280,7 +281,10 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         )
       }
 
-      await recordLipilaDonation(referenceId)
+      await recordLipilaDonation(
+        referenceId,
+        `${card.firstName.trim()} ${card.lastName.trim()}`.trim(),
+      )
 
       toast({
         title: "Donation received!",
@@ -338,7 +342,10 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         )
       }
 
-      await recordLipilaDonation(referenceId)
+      await recordLipilaDonation(
+        referenceId,
+        currentUser?.full_name || guestName.trim() || undefined,
+      )
 
       toast({
         title: "Donation received!",
@@ -937,18 +944,16 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         </div>
 
         {!currentUser && (payMethod === "lipila" || payMethod === "card") && (
-          <Alert className="mb-4 border-amber-200 bg-amber-50">
-            <AlertCircle className="h-4 w-4 text-amber-700" />
-            <AlertDescription className="text-amber-900">
-              Sign in before donating with mobile money or card so your payment is linked to this campaign.{" "}
-              <Link
-                href={`/auth/login?next=${encodeURIComponent(`/campaigns/${campaign.id}`)}`}
-                className="font-medium underline underline-offset-2"
-              >
-                Sign in
-              </Link>
-            </AlertDescription>
-          </Alert>
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+            Donating as a guest is fine — no account needed.{" "}
+            <Link
+              href={`/auth/login?next=${encodeURIComponent(`/campaigns/${campaign.id}`)}`}
+              className="font-medium underline underline-offset-2"
+            >
+              Sign in
+            </Link>{" "}
+            if you want this gift on your dashboard.
+          </div>
         )}
 
         <form id="contribution-form" onSubmit={handleSubmit} className="space-y-4">
@@ -1058,6 +1063,20 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               <p className="text-xs text-muted-foreground">
                 You'll get a prompt on this number to approve the payment.
               </p>
+              {!currentUser && (
+                <div className="space-y-1 pt-1">
+                  <Label htmlFor="guestName" className="text-xs flex items-center gap-2">
+                    <User className="h-3 w-3" />
+                    Your name (optional)
+                  </Label>
+                  <Input
+                    id="guestName"
+                    placeholder="How you'd like to appear on the campaign"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           )}
 

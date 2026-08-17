@@ -16,7 +16,7 @@ export async function POST(
 ) {
   try {
     const { id: campaignId } = await params
-    const { referenceId, message, anonymous } = await request.json()
+    const { referenceId, message, anonymous, donorName } = await request.json()
 
     if (!referenceId) {
       return NextResponse.json({ error: "referenceId is required" }, { status: 400 })
@@ -32,10 +32,6 @@ export async function POST(
     const { createClient } = await import("@/lib/supabase/server")
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     const db = createAdminClient()
 
@@ -79,11 +75,17 @@ export async function POST(
       return NextResponse.json({ error: "Invalid payment amount from gateway" }, { status: 502 })
     }
 
-    await upsertProfile(user.id)
+    if (user) {
+      await upsertProfile(user.id)
+    }
+
+    const trimmedDonorName =
+      typeof donorName === "string" && donorName.trim() ? donorName.trim().slice(0, 120) : null
 
     const donation = await insertDonation({
       campaign_id: campaignId,
-      contributor_id: user.id,
+      contributor_id: user?.id ?? null,
+      donor_name: trimmedDonorName,
       amount,
       message: message || null,
       anonymous: anonymous || false,

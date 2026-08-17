@@ -54,7 +54,8 @@ export interface Donation {
   status: string | null
   currency: string | null
   campaign_id: string
-  contributor_id: string
+  contributor_id: string | null
+  donor_name?: string | null
 }
 
 export interface CampaignBoost {

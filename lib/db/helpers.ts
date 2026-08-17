@@ -2,11 +2,13 @@ import { randomUUID } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Donation, Profile } from "@/lib/db/types"
 
-export type DonationInsert = Pick<
-  Donation,
-  "campaign_id" | "contributor_id" | "amount" | "tx_hash"
-> &
-  Partial<Pick<Donation, "message" | "anonymous" | "payment_method" | "status" | "currency">>
+export type DonationInsert = {
+  campaign_id: string
+  contributor_id: string | null
+  amount: number
+  tx_hash: string
+  donor_name?: string | null
+} & Partial<Pick<Donation, "message" | "anonymous" | "payment_method" | "status" | "currency">>
 
 export function asNumber(value: string | number | null | undefined): number {
   return Number(value ?? 0)
@@ -50,6 +52,7 @@ export async function insertDonation(row: DonationInsert): Promise<Donation> {
       id: newRowId(),
       campaign_id: row.campaign_id,
       contributor_id: row.contributor_id,
+      donor_name: row.donor_name ?? null,
       amount: row.amount,
       message: row.message ?? null,
       anonymous: row.anonymous ?? false,

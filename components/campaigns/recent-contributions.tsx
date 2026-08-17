@@ -21,12 +21,13 @@ export function RecentContributions({ contributions }: RecentContributionsProps)
 
   const getDisplayName = (contribution: (typeof contributions)[number]) => {
     if (contribution.anonymous) return "Anonymous"
-    return contribution.profiles?.full_name || "Supporter"
+    return contribution.profiles?.full_name || contribution.donor_name || "Supporter"
   }
 
   const getDisplayInitials = (contribution: (typeof contributions)[number]) => {
     if (contribution.anonymous) return "A"
-    return contribution.profiles?.full_name ? getInitials(contribution.profiles.full_name) : "U"
+    const name = contribution.profiles?.full_name || contribution.donor_name
+    return name ? getInitials(name) : "S"
   }
 
   if (sortedContributions.length === 0) {
