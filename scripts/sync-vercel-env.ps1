@@ -28,8 +28,8 @@ if (-not (Test-Path $envFile)) {
 
 # Production app URL (override localhost from local .env)
 $productionOverrides = @{
-  "NEXT_PUBLIC_APP_URL" = "https://thulafunds.com"
-  "NEXT_PUBLIC_PRODUCTION_URL" = "https://thulafunds.com"
+  "NEXT_PUBLIC_APP_URL" = "https://www.thulafunds.com"
+  "NEXT_PUBLIC_PRODUCTION_URL" = "https://www.thulafunds.com"
 }
 
 $targets = @("production", "preview", "development")

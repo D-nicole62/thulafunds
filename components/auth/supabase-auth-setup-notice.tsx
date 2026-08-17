@@ -9,9 +9,9 @@ export function SupabaseAuthSetupNotice() {
       <p className="font-medium">Links still open localhost?</p>
       <p>
         In Supabase, set <strong>Site URL</strong> to{" "}
-        <code className="rounded bg-blue-100 px-1">https://thulafunds.com</code> (not localhost).
+        <code className="rounded bg-blue-100 px-1">https://www.thulafunds.com</code> (not localhost).
         Add{" "}
-        <code className="rounded bg-blue-100 px-1">https://thulafunds.com/auth/callback</code> under
+        <code className="rounded bg-blue-100 px-1">https://www.thulafunds.com/auth/callback</code> under
         Redirect URLs, then request a new verification email.
       </p>
       {settingsUrl ? (

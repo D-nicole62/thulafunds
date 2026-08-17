@@ -33,7 +33,7 @@ checks.push({
 checks.push({
   name: "NEXT_PUBLIC_APP_URL",
   ok: hasEnv("NEXT_PUBLIC_APP_URL"),
-  hint: "Production site URL for auth redirects — e.g. https://thulafunds.com",
+  hint: "Production site URL for auth redirects — e.g. https://www.thulafunds.com",
   optional: process.env.NODE_ENV !== "production",
 })
 

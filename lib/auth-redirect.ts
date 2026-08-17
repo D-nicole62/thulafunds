@@ -1,7 +1,7 @@
 const trimTrailingSlash = (url: string) => url.replace(/\/$/, "")
 
-/** Canonical production origin for auth emails and callbacks. */
-export const PRODUCTION_SITE_ORIGIN = "https://thulafunds.com"
+/** Canonical production origin (Vercel primary domain is www). */
+export const PRODUCTION_SITE_ORIGIN = "https://www.thulafunds.com"
 
 function isLocalhostUrl(url: string): boolean {
   try {

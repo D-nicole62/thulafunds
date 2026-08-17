@@ -43,8 +43,8 @@ NEXT_PUBLIC_USDC_CONTRACT_ID=C...            # USDC SAC on Soroban
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...           # Server only — Settings → API
-NEXT_PUBLIC_APP_URL=https://thulafunds.com   # Production site URL for auth email links
-NEXT_PUBLIC_PRODUCTION_URL=https://thulafunds.com   # Auth callbacks always use this in production
+NEXT_PUBLIC_APP_URL=https://www.thulafunds.com   # Production site URL for auth email links
+NEXT_PUBLIC_PRODUCTION_URL=https://www.thulafunds.com   # Auth callbacks always use this in production
 NEXT_PUBLIC_CAMPAIGN_FACTORY_ID=C...         # After deploying contracts
 ```
 
@@ -121,13 +121,13 @@ Supabase’s **built-in email service** allows only a few auth emails per hour. 
    - **Password:** your `RESEND_API_KEY`
    - **Sender email:** a verified address (e.g. `noreply@thulafunds.com`)
 3. Authentication → **URL Configuration**:
-   - **Site URL:** `https://thulafunds.com` (must not be `localhost` in production)
+   - **Site URL:** `https://www.thulafunds.com` (must not be `localhost` in production)
    - **Redirect URLs:** add all of:
-     - `https://thulafunds.com/auth/callback`
      - `https://www.thulafunds.com/auth/callback`
+     - `https://thulafunds.com/auth/callback`
      - `http://localhost:3000/auth/callback`
      - `http://localhost:3001/auth/callback`
-4. Set `NEXT_PUBLIC_APP_URL=https://thulafunds.com` in Vercel and redeploy
+4. Set `NEXT_PUBLIC_APP_URL=https://www.thulafunds.com` in Vercel and redeploy
 5. Save and redeploy if env vars changed
 
 If an old verification email still opens `localhost`, use **Resend verification email** on the verify page — links from before this fix may still point to localhost.
