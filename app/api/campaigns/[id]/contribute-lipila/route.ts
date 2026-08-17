@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getApiErrorMessage } from "@/lib/db-errors"
 import { insertDonation, upsertProfile, nowIso } from "@/lib/db/helpers"
@@ -94,6 +95,11 @@ export async function POST(
 
     // Trigger on_donation_created recalculates current_amount from SUM(donations).
     await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
+
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/contributions")
+    revalidatePath("/campaigns")
+    revalidatePath(`/campaigns/${campaignId}`)
 
     return NextResponse.json({
       success: true,

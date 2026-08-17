@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { upsertProfile } from "@/lib/db/helpers"
 import { indexDonationFromTx, indexDirectDonationFromTx } from "@/lib/stellar/indexer"
@@ -66,6 +67,11 @@ export async function POST(
     }
 
     const { data: donation } = await db.from("donations").select("*").eq("tx_hash", txHash).maybeSingle()
+
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/contributions")
+    revalidatePath("/campaigns")
+    revalidatePath(`/campaigns/${campaignId}`)
 
     return NextResponse.json({
       success: true,

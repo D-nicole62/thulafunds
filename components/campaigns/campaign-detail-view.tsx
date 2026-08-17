@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { CampaignHeader } from "./campaign-header"
 import { CampaignProgress } from "./campaign-progress"
 import { CampaignCreator } from "./campaign-creator"
@@ -19,7 +20,13 @@ export function CampaignDetailView({
   updates, 
   currentUser 
 }: CampaignDetailViewProps) {
+  const router = useRouter()
   const [showContributionForm, setShowContributionForm] = useState(false)
+
+  const handleContributionClose = () => {
+    setShowContributionForm(false)
+    router.refresh()
+  }
 
   // Ensure we have the creator profile data
   const creatorProfile = campaign.profiles
@@ -122,7 +129,7 @@ export function CampaignDetailView({
       {showContributionForm && (
         <div
           className="fixed inset-0 z-50 overflow-y-auto bg-black/50"
-          onClick={() => setShowContributionForm(false)}
+          onClick={handleContributionClose}
         >
           <div
             className="flex min-h-full items-center justify-center p-4 sm:p-6"
@@ -131,7 +138,7 @@ export function CampaignDetailView({
             <ContributionForm
               campaign={campaign}
               currentUser={currentUser}
-              onCloseAction={() => setShowContributionForm(false)}
+              onCloseAction={handleContributionClose}
             />
           </div>
         </div>

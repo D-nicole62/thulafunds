@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { asNumber } from "@/lib/db/helpers"
+import { formatDonationAmount, isCompletedDonation } from "@/lib/format-donation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -63,7 +64,9 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
     const campaignMap = new Map((campaigns ?? []).map((c) => [c.id, c]))
     const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
 
-    const contributions = (contributionsRaw ?? []).map((d) => {
+    const contributions = (contributionsRaw ?? [])
+      .filter((d) => isCompletedDonation(d.status))
+      .map((d) => {
       const campaign = campaignMap.get(d.campaign_id)
       const creator = campaign ? profileMap.get(campaign.creator_id) : null
       return {
@@ -73,7 +76,9 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
       }
     })
 
-    const receivedContributions = (receivedRaw ?? []).map((d) => ({
+    const receivedContributions = (receivedRaw ?? [])
+      .filter((d) => isCompletedDonation(d.status))
+      .map((d) => ({
       ...d,
       amount: asNumber(d.amount),
       contributor: profileMap.get(d.contributor_id) ?? null,
@@ -142,7 +147,7 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
                           </div>
                           <div className="text-right ml-2">
                             <div className="font-semibold text-sm text-green-600">
-                              +${Number(contribution.amount || 0).toLocaleString()}
+                              {formatDonationAmount(contribution.amount, contribution.currency)}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(contribution.created_at), { addSuffix: true })}
@@ -192,7 +197,7 @@ export async function RecentContributions({ userId }: RecentContributionsProps) 
                           </div>
                           <div className="text-right ml-2">
                             <div className="font-semibold text-sm text-green-600">
-                              +${Number(contribution.amount || 0).toLocaleString()}
+                              {formatDonationAmount(contribution.amount, contribution.currency)}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(contribution.created_at), { addSuffix: true })}

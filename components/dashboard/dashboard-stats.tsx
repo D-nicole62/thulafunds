@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, Target, Users, TrendingUp } from "lucide-react"
 import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
 import { asNumber } from "@/lib/db/helpers"
+import { isCompletedDonation } from "@/lib/format-donation"
 
 interface DashboardStatsProps {
   userId: string
@@ -14,12 +15,13 @@ export async function DashboardStats({ userId }: DashboardStatsProps) {
 
     const [{ data: campaigns }, { data: contributions }] = await Promise.all([
       db.from("campaigns").select("current_amount, goal_amount").eq("creator_id", userId),
-      db.from("donations").select("amount").eq("contributor_id", userId),
+      db.from("donations").select("amount, status, currency").eq("contributor_id", userId),
     ])
 
+    const completedContributions = (contributions ?? []).filter((c) => isCompletedDonation(c.status))
     const totalRaised = (campaigns ?? []).reduce((sum, campaign) => sum + asNumber(campaign.current_amount), 0)
     const totalGoal = (campaigns ?? []).reduce((sum, campaign) => sum + asNumber(campaign.goal_amount), 0)
-    const totalContributed = (contributions ?? []).reduce((sum, c) => sum + asNumber(c.amount), 0)
+    const totalContributed = completedContributions.reduce((sum, c) => sum + asNumber(c.amount), 0)
     const activeCampaigns = campaigns?.length ?? 0
 
     const stats = [

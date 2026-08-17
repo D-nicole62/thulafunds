@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignDetailView } from "@/components/campaigns/campaign-detail-view"
 import { asNumber } from "@/lib/db/helpers"
+import { isCompletedDonation } from "@/lib/format-donation"
 import type { Donation, Profile } from "@/lib/db/types"
 
 interface CampaignPageProps {
@@ -36,7 +37,13 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
       .order("created_at", { ascending: false }),
   ])
 
-  const contributorIds = [...new Set((donationsRaw ?? []).map((d) => d.contributor_id))]
+  const contributorIds = [
+    ...new Set(
+      (donationsRaw ?? [])
+        .map((d) => d.contributor_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
   const { data: contributors } =
     contributorIds.length > 0
       ? await db.from("profiles").select("*").in("id", contributorIds)
@@ -50,7 +57,9 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
     ? { id: user.id, email: user.email ?? undefined, full_name: user.user_metadata?.full_name }
     : null
 
-  const donations = (donationsRaw ?? []).map((d: Donation) => ({
+  const donations = (donationsRaw ?? [])
+    .filter((d) => isCompletedDonation(d.status))
+    .map((d: Donation) => ({
     ...d,
     amount: asNumber(d.amount),
     profiles: contributorMap.get(d.contributor_id) ?? null,

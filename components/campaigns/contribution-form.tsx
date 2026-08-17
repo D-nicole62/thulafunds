@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,6 +42,7 @@ const MODAL_CARD_FLEX =
   "w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex flex-col overflow-hidden overscroll-contain"
 
 export function ContributionForm({ campaign, currentUser, onCloseAction }: ContributionFormProps) {
+  const router = useRouter()
   const [amount, setAmount] = useState("")
   const [message, setMessage] = useState("")
   const [anonymous, setAnonymous] = useState(false)
@@ -51,6 +53,12 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [payMethod, setPayMethod] = useState<PayMethod>("lipila")
   const [phone, setPhone] = useState("")
   const [lipilaStage, setLipilaStage] = useState<"idle" | "prompting" | "waiting">("idle")
+
+  const completeDonation = () => {
+    setTransactionStatus("completed")
+    router.refresh()
+    setStep("success")
+  }
   const [card, setCard] = useState({
     firstName: "",
     lastName: "",
@@ -268,12 +276,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
       await recordLipilaDonation(referenceId)
 
-      setTransactionStatus("completed")
       toast({
         title: "Donation received!",
         description: `Thank you for your ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} card contribution.`,
       })
-      setStep("success")
+      completeDonation()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Card payment failed. Please try again.")
     } finally {
@@ -327,12 +334,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
 
       await recordLipilaDonation(referenceId)
 
-      setTransactionStatus("completed")
       toast({
         title: "Donation received!",
         description: `Thank you for your ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} contribution.`,
       })
-      setStep("success")
+      completeDonation()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Mobile money payment failed. Please try again.")
     } finally {
@@ -377,7 +383,6 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
           throw new Error(errorData.error || "Failed to create contribution record")
         }
 
-        setTransactionStatus("completed")
         toast({
           title: "Donation confirmed on Stellar!",
           description: hasEscrow
@@ -385,7 +390,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             : `Your $${Number(amount).toFixed(2)} USDC was sent to the organizer. Tx: ${paymentResult.txHash.slice(0, 8)}...`,
         })
 
-        setStep("success")
+        completeDonation()
       } else {
         throw new Error("Payment was not completed successfully")
       }
@@ -464,6 +469,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   // Handle payment status changes
   useEffect(() => {
     if (paymentStatus === "completed" && step === "payment") {
+      router.refresh()
       setStep("success")
     } else if (paymentStatus === "failed") {
       // Only set error from onchain if we don't already have a local error
