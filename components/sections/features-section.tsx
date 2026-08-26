@@ -29,7 +29,7 @@ export function FeaturesSection() {
   ]
 
   return (
-    <section className="py-2 sm:py-24 bg-muted/30">
+    <section className="py-16 sm:py-24 bg-muted/30">
       <div className="container">
         <div className="mx-auto max-w-2xl text-center mb-16">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Everything you need to succeed</h2>
@@ -47,20 +47,20 @@ export function FeaturesSection() {
                   <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/20 text-primary text-sm font-medium">
                     Security
                   </div>
-                  <h3 className="text-xl font-bold">{features[0].title}</h3>
+                  <h3 className="text-xl font-bold text-foreground">{features[0].title}</h3>
                   <p className="text-muted-foreground leading-relaxed">{features[0].description}</p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-0 shadow-sm hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-blue-50 to-blue-100">
+            <Card className="border-0 shadow-sm hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-950">
               <CardContent className="p-8">
                 <div className="space-y-4">
                   <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-200 text-blue-800 text-sm font-medium">
                     Speed
                   </div>
-                  <h3 className="text-xl font-bold">{features[1].title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{features[1].description}</p>
+                  <h3 className="text-xl font-bold text-blue-950">{features[1].title}</h3>
+                  <p className="text-blue-900/80 leading-relaxed">{features[1].description}</p>
                 </div>
               </CardContent>
             </Card>
