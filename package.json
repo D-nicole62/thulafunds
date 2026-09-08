@@ -13,6 +13,8 @@
     "setup:storage": "tsx scripts/setup-storage.ts",
     "db:test": "tsx scripts/test-db-connection.ts",
     "db:donations": "tsx scripts/test-donations-table.ts",
+    "db:apply-pad-a-girl": "tsx scripts/apply-pad-a-girl-backfill.ts",
+    "db:apply-donations-schema": "tsx scripts/apply-donations-schema.ts",
     "indexer": "tsx scripts/indexer.ts",
     "contracts:build": "cd contracts && cargo build --target wasm32v1-none --release",
     "contracts:deploy": "tsx scripts/deploy-soroban-contracts.ts",

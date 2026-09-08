@@ -20,7 +20,7 @@ INSERT INTO donations (
 VALUES (
   gen_random_uuid(),
   '31cfdcbd-0eb4-4a4c-a2b8-2a0a40c6715a',
-  NULL,
+  (SELECT creator_id FROM campaigns WHERE id = '31cfdcbd-0eb4-4a4c-a2b8-2a0a40c6715a'),
   106,
   'Historical Lipila donations reconciled to Lipila wallet total (K107)',
   true,

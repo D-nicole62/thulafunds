@@ -37,6 +37,9 @@ ALTER TABLE donations
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed',
   ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USDC';
 
+-- Guest Lipila donations may have no auth user
+ALTER TABLE donations ALTER COLUMN contributor_id DROP NOT NULL;
+
 CREATE INDEX IF NOT EXISTS donations_payment_method_idx ON donations(payment_method);
 
 -- 4. UUID default for id (same issue as campaigns)
