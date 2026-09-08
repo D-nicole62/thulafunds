@@ -6,12 +6,21 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle, Heart, Loader2, Link2 } from "lucide-react"
 import { useCampaignBalance } from "@/hooks/use-campaign-balance"
-import { formatDonationAmount } from "@/lib/format-donation"
+import {
+  campaignProgressPercent,
+  formatDonationAmount,
+  isCampaignGoalReached,
+} from "@/lib/format-donation"
 import type { CampaignProgressProps } from "@/types/campaign"
 
-export function CampaignProgress({ campaign, onContributeAction }: CampaignProgressProps) {
+export function CampaignProgress({
+  campaign,
+  onContributeAction,
+  showDonorDetails = false,
+}: CampaignProgressProps) {
   const hasEscrow = Boolean(campaign.contract_address)
-  const isLipilaPrimary = !hasEscrow && !campaign.wallet_address
+  const isLipilaPrimary =
+    !hasEscrow && (!campaign.wallet_address || campaign.payment_method === "lipila")
   const donationsTotal = (campaign.donations ?? campaign.contributions ?? []).reduce(
     (sum, d) => sum + Number(d.amount ?? 0),
     0,
@@ -35,8 +44,8 @@ export function CampaignProgress({ campaign, onContributeAction }: CampaignProgr
     campaign.goal_amount,
   )
 
-  const progress = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
-  const isCompleted = progress >= 100
+  const progress = campaignProgressPercent(raised, goal)
+  const isCompleted = isCampaignGoalReached(raised, goal)
 
   const deadline = campaign.deadline
     ? new Date(campaign.deadline)
@@ -56,12 +65,14 @@ export function CampaignProgress({ campaign, onContributeAction }: CampaignProgr
             <span className="text-xl">💰</span>
             Campaign Progress
           </span>
-          {source === "soroban" && (
+          {isCompleted ? (
+            <Badge className="bg-green-100 text-green-800 text-xs">Goal reached</Badge>
+          ) : source === "soroban" ? (
             <Badge variant="outline" className="text-xs">
               <Link2 className="w-3 h-3 mr-1" />
               Live on-chain
             </Badge>
-          )}
+          ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -81,16 +92,18 @@ export function CampaignProgress({ campaign, onContributeAction }: CampaignProgr
             </div>
             <Progress value={progress} className="h-2" />
             <div className="text-center text-sm text-muted-foreground">
-              {progress.toFixed(1)}% of goal reached
+              {isCompleted ? "Goal reached!" : `${progress.toFixed(1)}% of goal reached`}
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold text-primary">{donationsCount}</div>
-            <div className="text-xs text-muted-foreground">Donors</div>
-          </div>
+        <div className={`grid gap-4 text-center ${showDonorDetails ? "grid-cols-2" : "grid-cols-1"}`}>
+          {showDonorDetails && (
+            <div>
+              <div className="text-2xl font-bold text-primary">{donationsCount}</div>
+              <div className="text-xs text-muted-foreground">Donors</div>
+            </div>
+          )}
           <div>
             <div className="text-2xl font-bold text-primary">{daysLeft}</div>
             <div className="text-xs text-muted-foreground">Days Left</div>
@@ -109,7 +122,7 @@ export function CampaignProgress({ campaign, onContributeAction }: CampaignProgr
             <div className="text-sm text-green-700">
               {hasEscrow
                 ? "Organizer can withdraw from on-chain escrow"
-                : "Thank you for helping this campaign succeed"}
+                : "This campaign has reached its fundraising goal. Thank you to all supporters."}
             </div>
           </div>
         )}

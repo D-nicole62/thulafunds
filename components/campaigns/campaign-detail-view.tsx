@@ -41,6 +41,10 @@ export function CampaignDetailView({
     )
   }
 
+  const isCreator = currentUser?.id === campaign.creator_id
+  const goalReached =
+    campaign.goal_amount > 0 && campaign.current_amount >= campaign.goal_amount
+
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -62,14 +66,19 @@ export function CampaignDetailView({
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">Recent Contributions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RecentContributions contributions={contributions} />
-              </CardContent>
-            </Card>
+            {isCreator && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold">Recent Contributions</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Only you can see donor details for your campaign.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <RecentContributions contributions={contributions} />
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -86,11 +95,15 @@ export function CampaignDetailView({
                     goal_amount: campaign.goal_amount,
                     contract_address: campaign.contract_address,
                     wallet_address: campaign.wallet_address,
+                    payment_method: campaign.payment_method,
                     deadline: campaign.deadline,
-                    donations: campaign.donations || campaign.contributions || [],
+                    donations: isCreator ? campaign.donations || campaign.contributions || [] : [],
                     created_at: campaign.created_at,
                   }}
-                  onContributeAction={() => setShowContributionForm(true)}
+                  showDonorDetails={isCreator}
+                  onContributeAction={() => {
+                    if (!goalReached) setShowContributionForm(true)
+                  }}
                 />
               </CardContent>
             </Card>

@@ -23,3 +23,12 @@ export function isCompletedDonation(status?: string | null): boolean {
   if (!status) return true
   return status.toLowerCase() === "completed"
 }
+
+export function isCampaignGoalReached(raised: number, goal: number): boolean {
+  return goal > 0 && raised >= goal
+}
+
+export function campaignProgressPercent(raised: number, goal: number): number {
+  if (goal <= 0) return 0
+  return Math.min((raised / goal) * 100, 100)
+}

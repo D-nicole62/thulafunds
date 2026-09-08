@@ -69,14 +69,15 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
   const donationsTotal = donations.reduce((sum, d) => sum + d.amount, 0)
   const cachedAmount = asNumber(campaignData.current_amount)
   const hasEscrow = Boolean(campaignData.contract_address)
-  const displayAmount = hasEscrow ? cachedAmount : Math.max(cachedAmount, donationsTotal)
 
-  // Keep lipila-only campaign totals in sync when trigger/backfill was missed.
-  if (!hasEscrow && donationsTotal > cachedAmount) {
+  // Keep lipila / non-escrow campaign totals aligned with completed donations.
+  if (!hasEscrow) {
     await syncCampaignAmountFromDonations(campaignId).catch((err) => {
       console.error("Campaign amount sync failed:", err)
     })
   }
+
+  const displayAmount = hasEscrow ? cachedAmount : Math.max(cachedAmount, donationsTotal)
 
   const campaign = {
     ...campaignData,

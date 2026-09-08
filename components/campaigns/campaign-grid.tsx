@@ -4,6 +4,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
+import {
+  campaignProgressPercent,
+  formatDonationAmount,
+  isCampaignGoalReached,
+} from "@/lib/format-donation"
 
 interface Campaign {
   id: string
@@ -14,6 +19,7 @@ interface Campaign {
   image_url?: string
   category: string
   created_at: string
+  payment_method?: string | null
   profiles: {
     full_name: string
     avatar_url?: string
@@ -45,8 +51,11 @@ export function CampaignGrid({ campaigns }: CampaignGridProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {campaigns.map((campaign) => {
-        const progress = (campaign.current_amount / campaign.goal_amount) * 100
-        const isCompleted = progress >= 100
+        const isLipila = campaign.payment_method === "lipila"
+        const currency = isLipila ? "ZMW" : "USD"
+        const progress = campaignProgressPercent(campaign.current_amount, campaign.goal_amount)
+        const isCompleted = isCampaignGoalReached(campaign.current_amount, campaign.goal_amount)
+        const formatAmount = (amount: number) => formatDonationAmount(amount, currency)
 
         return (
           <Link key={campaign.id} href={`/campaigns/${campaign.id}`}>
@@ -70,7 +79,7 @@ export function CampaignGrid({ campaigns }: CampaignGridProps) {
                   <Badge variant="outline" className="text-xs">
                     {campaign.category}
                   </Badge>
-                  {isCompleted && <Badge className="bg-green-100 text-green-800 text-xs">Funded</Badge>}
+                  {isCompleted && <Badge className="bg-green-100 text-green-800 text-xs">Goal reached</Badge>}
                 </div>
 
                 <h3 className="font-semibold text-lg mb-2 line-clamp-2 group-hover:text-primary transition-colors">
@@ -81,14 +90,16 @@ export function CampaignGrid({ campaigns }: CampaignGridProps) {
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">${campaign.current_amount.toLocaleString()}</span>
-                    <span className="text-muted-foreground">of ${campaign.goal_amount.toLocaleString()}</span>
+                    <span className="font-medium">{formatAmount(campaign.current_amount)}</span>
+                    <span className="text-muted-foreground">of {formatAmount(campaign.goal_amount)}</span>
                   </div>
 
-                  <Progress value={Math.min(progress, 100)} className="h-2" />
+                  <Progress value={progress} className="h-2" />
 
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{progress.toFixed(0)}% funded</span>
+                    <span className="text-xs text-muted-foreground">
+                      {isCompleted ? "Goal reached!" : `${progress.toFixed(0)}% funded`}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}
                     </span>

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Share2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
+import { isCampaignGoalReached } from "@/lib/format-donation"
 import type { CampaignHeaderProps } from "@/types/campaign"
 
 export function CampaignHeader({ campaign }: CampaignHeaderProps) {
@@ -36,6 +37,7 @@ export function CampaignHeader({ campaign }: CampaignHeaderProps) {
   }
 
   const creatorName = campaign.profiles?.full_name || "Unknown Creator"
+  const goalReached = isCampaignGoalReached(campaign.current_amount, campaign.goal_amount)
 
   return (
     <>
@@ -66,6 +68,12 @@ export function CampaignHeader({ campaign }: CampaignHeaderProps) {
               <span>{formatDistanceToNow(new Date(campaign.created_at))} ago</span>
               <span>•</span>
               <Badge variant="secondary">{campaign.category}</Badge>
+              {goalReached && (
+                <>
+                  <span>•</span>
+                  <Badge className="bg-green-100 text-green-800">Goal reached</Badge>
+                </>
+              )}
             </div>
           </div>
           <div className="flex gap-2">

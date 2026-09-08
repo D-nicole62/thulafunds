@@ -72,6 +72,8 @@ export interface CampaignHeaderProps {
     image_url?: string
     category: string
     created_at: string
+    current_amount: number
+    goal_amount: number
     profiles?: Profile
   }
 }
@@ -84,11 +86,14 @@ export interface CampaignProgressProps {
     contract_address?: string
     wallet_address?: string
     deadline?: string
+    payment_method?: string | null
     donations?: Donation[]
     contributions?: Donation[]
     created_at: string
   }
   onContributeAction: () => void
+  /** When false, hides donor counts (public campaign view). */
+  showDonorDetails?: boolean
 }
 
 export interface CampaignCreatorProps {
