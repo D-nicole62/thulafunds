@@ -46,26 +46,34 @@ export async function upsertProfile(
 /** Insert a donation row (explicit id for tables missing UUID defaults). */
 export async function insertDonation(row: DonationInsert): Promise<Donation> {
   const db = createAdminClient()
-  const { data, error } = await db
-    .from("donations")
-    .insert({
-      id: newRowId(),
-      campaign_id: row.campaign_id,
-      contributor_id: row.contributor_id,
-      donor_name: row.donor_name ?? null,
-      amount: row.amount,
-      message: row.message ?? null,
-      anonymous: row.anonymous ?? false,
-      tx_hash: row.tx_hash,
-      payment_method: row.payment_method ?? "soroban_escrow",
-      status: row.status ?? "completed",
-      currency: row.currency ?? "USDC",
-    })
-    .select()
-    .single()
+  const baseRow = {
+    id: newRowId(),
+    campaign_id: row.campaign_id,
+    contributor_id: row.contributor_id,
+    amount: row.amount,
+    message: row.message ?? null,
+    anonymous: row.anonymous ?? false,
+    tx_hash: row.tx_hash,
+    payment_method: row.payment_method ?? "soroban_escrow",
+    status: row.status ?? "completed",
+    currency: row.currency ?? "USDC",
+  }
+
+  const withDonorName = { ...baseRow, donor_name: row.donor_name ?? null }
+  let { data, error } = await db.from("donations").insert(withDonorName).select().single()
+
+  if (error && isMissingDonorNameColumnError(error)) {
+    ;({ data, error } = await db.from("donations").insert(baseRow).select().single())
+  }
 
   if (error) throw error
   return data as Donation
+}
+
+function isMissingDonorNameColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const e = error as { code?: string; message?: string }
+  return e.code === "42703" || Boolean(e.message?.includes("donor_name"))
 }
 
 /** Set campaigns.current_amount from SUM(donations) — reliable when DB trigger is missing. */

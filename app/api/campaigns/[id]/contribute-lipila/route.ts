@@ -1,14 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getApiErrorMessage } from "@/lib/db-errors"
-import { insertDonation, upsertProfile, nowIso, syncCampaignAmountFromDonations } from "@/lib/db/helpers"
+import { upsertProfile } from "@/lib/db/helpers"
 import {
   LIPILA_API_KEY,
-  LIPILA_CURRENCY,
   LIPILA_ENDPOINTS,
-  isLipilaSuccess,
 } from "@/lib/lipila/config"
+import { recordLipilaDonationFromStatus } from "@/lib/lipila/record-donation"
 
 export async function POST(
   request: NextRequest,
@@ -45,34 +43,14 @@ export async function POST(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    const { data: existing } = await db.from("donations").select("*").eq("tx_hash", referenceId).maybeSingle()
-    if (existing) {
-      return NextResponse.json({
-        success: true,
-        donation: { id: existing.id, amount: Number(existing.amount), reference: referenceId },
-        message: "Donation already recorded",
-      })
-    }
-
     const statusRes = await fetch(
       `${LIPILA_ENDPOINTS.status}?referenceId=${encodeURIComponent(referenceId)}`,
       { headers: { accept: "application/json", "x-api-key": LIPILA_API_KEY } },
     )
     const statusData = await statusRes.json().catch(() => null)
 
-    if (!statusData || !isLipilaSuccess(statusData.status)) {
-      return NextResponse.json(
-        {
-          error: "Payment is not confirmed yet. Please complete the prompt and try again.",
-          status: statusData?.status ?? "unknown",
-        },
-        { status: 402 },
-      )
-    }
-
-    const amount = Number(statusData.amount)
-    if (!amount || amount <= 0) {
-      return NextResponse.json({ error: "Invalid payment amount from gateway" }, { status: 502 })
+    if (!statusData) {
+      return NextResponse.json({ error: "Could not verify payment with Lipila" }, { status: 502 })
     }
 
     if (user) {
@@ -82,41 +60,28 @@ export async function POST(
     const trimmedDonorName =
       typeof donorName === "string" && donorName.trim() ? donorName.trim().slice(0, 120) : null
 
-    const donation = await insertDonation({
-      campaign_id: campaignId,
-      contributor_id: user?.id ?? null,
-      donor_name: trimmedDonorName,
-      amount,
+    const result = await recordLipilaDonationFromStatus(campaignId, statusData, {
+      contributorId: user?.id ?? null,
+      donorName: trimmedDonorName,
       message: message || null,
       anonymous: anonymous || false,
-      tx_hash: referenceId,
-      payment_method: "lipila",
-      status: "completed",
-      currency: statusData.currency || LIPILA_CURRENCY,
     })
-
-    await syncCampaignAmountFromDonations(campaignId)
-    await db.from("campaigns").update({ updated_at: nowIso() }).eq("id", campaignId)
-
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/contributions")
-    revalidatePath("/campaigns")
-    revalidatePath(`/campaigns/${campaignId}`)
 
     return NextResponse.json({
       success: true,
       donation: {
-        id: donation.id,
-        amount,
-        currency: statusData.currency || LIPILA_CURRENCY,
+        id: result.donationId,
+        amount: result.amount,
+        currency: statusData.currency,
         reference: referenceId,
         payment_method: "lipila",
       },
-      message: "Lipila donation recorded",
+      message: result.created ? "Lipila donation recorded" : "Donation already recorded",
     })
   } catch (error) {
     console.error("Lipila donation recording error:", error)
     const msg = getApiErrorMessage(error, "Failed to record donation")
-    return NextResponse.json({ error: msg }, { status: 500 })
+    const status = msg.includes("not confirmed") ? 402 : 500
+    return NextResponse.json({ error: msg, status }, { status })
   }
 }

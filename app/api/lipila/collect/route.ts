@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import {
   LIPILA_API_KEY,
-  LIPILA_CALLBACK_URL,
   LIPILA_ENDPOINTS,
+  getLipilaCallbackUrl,
 } from "@/lib/lipila/config"
 import { lipilaUpstreamToJson } from "@/lib/lipila/upstream"
 
@@ -38,7 +38,8 @@ export async function POST(request: NextRequest) {
     "x-api-key": LIPILA_API_KEY,
     accept: "application/json",
   }
-  if (LIPILA_CALLBACK_URL) headers.callbackUrl = LIPILA_CALLBACK_URL
+  const callbackUrl = getLipilaCallbackUrl()
+  if (callbackUrl) headers.callbackUrl = callbackUrl
 
   let upstream: Response
   try {

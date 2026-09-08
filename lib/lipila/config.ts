@@ -9,6 +9,17 @@ export const LIPILA_API_BASE = process.env.LIPILA_API_BASE || "https://api.lipil
 export const LIPILA_API_KEY = process.env.LIPILA_API_KEY || ""
 export const LIPILA_CALLBACK_URL = process.env.LIPILA_CALLBACK_URL || ""
 
+/** Resolved webhook URL for Lipila collection callbacks. */
+export function getLipilaCallbackUrl(): string {
+  if (LIPILA_CALLBACK_URL.trim()) return LIPILA_CALLBACK_URL.trim()
+  const origin =
+    process.env.NEXT_PUBLIC_PRODUCTION_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    ""
+  if (!origin) return ""
+  return `${origin.replace(/\/$/, "")}/api/lipila/callback`
+}
+
 /** Currency Lipila collects in (Zambian Kwacha by default). Safe to expose. */
 export const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
 

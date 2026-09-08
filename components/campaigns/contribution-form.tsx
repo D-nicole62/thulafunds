@@ -30,6 +30,7 @@ import {
   Coins
 } from "lucide-react"
 import type { ContributionFormProps } from "@/types/campaign"
+import { lipilaReferenceData } from "@/lib/lipila/reference-data"
 
 const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
 type PayMethod = "lipila" | "card" | "stellar"
@@ -232,6 +233,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               amount: Number(amount),
               narration: `Donation to ${campaign.title}`.slice(0, 100),
               currency: LIPILA_CURRENCY,
+              referenceData: lipilaReferenceData(campaign.id),
               backUrl: returnUrl,
               redirectUrl: returnUrl,
             },
@@ -318,6 +320,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             narration: `Donation to ${campaign.title}`.slice(0, 100),
             accountNumber: formatMsisdn(phone),
             currency: LIPILA_CURRENCY,
+            referenceData: lipilaReferenceData(campaign.id),
           },
         }),
       })
