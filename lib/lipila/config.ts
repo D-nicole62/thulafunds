@@ -39,8 +39,8 @@ export function isLipilaSuccess(status?: string | null): boolean {
 
 export function isLipilaFailure(status?: string | null): boolean {
   if (!status) return false
-  return ["failed", "failure", "cancelled", "canceled", "rejected", "error"].includes(
-    status.toLowerCase(),
+  return ["failed", "failure", "cancelled", "canceled", "rejected", "error", "expired", "timeout", "timedout"].includes(
+    status.toLowerCase().replace(/\s+/g, ""),
   )
 }
 

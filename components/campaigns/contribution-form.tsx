@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,15 @@ import {
 } from "lucide-react"
 import type { ContributionFormProps } from "@/types/campaign"
 import { lipilaReferenceData } from "@/lib/lipila/reference-data"
+import {
+  formatPaymentTimeLeft,
+  LIPILA_CARD_POLL_MS,
+  LIPILA_CARD_TIMEOUT_MS,
+  LIPILA_MOMO_POLL_MS,
+  LIPILA_MOMO_TIMEOUT_MS,
+  LIPILA_TIMEOUT_MESSAGES,
+  pollLipilaCollectionStatus,
+} from "@/lib/lipila/poll-collection-status"
 
 const LIPILA_CURRENCY = process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
 type PayMethod = "lipila" | "card" | "stellar"
@@ -56,6 +65,23 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [phone, setPhone] = useState("")
   const [guestName, setGuestName] = useState("")
   const [lipilaStage, setLipilaStage] = useState<"idle" | "prompting" | "waiting">("idle")
+  const [paymentTimeLeftMs, setPaymentTimeLeftMs] = useState<number | null>(null)
+  const lipilaPollAbortRef = useRef<AbortController | null>(null)
+
+  const cancelLipilaPayment = () => {
+    lipilaPollAbortRef.current?.abort()
+    lipilaPollAbortRef.current = null
+    setLoading(false)
+    setLipilaStage("idle")
+    setPaymentTimeLeftMs(null)
+    setError(LIPILA_TIMEOUT_MESSAGES.cancelled)
+  }
+
+  useEffect(() => {
+    return () => {
+      lipilaPollAbortRef.current?.abort()
+    }
+  }, [])
 
   const completeDonation = () => {
     setTransactionStatus("completed")
@@ -170,26 +196,6 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     return digits
   }
 
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-  /** Poll Lipila collection status until success/failure or timeout. */
-  const waitForConfirmation = async (referenceId: string, maxAttempts: number) => {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await sleep(5000)
-      const statusRes = await fetch(
-        `/api/lipila/status?referenceId=${encodeURIComponent(referenceId)}`,
-      )
-      const statusData = await statusRes.json().catch(() => ({}))
-      const status = String(statusData?.status || "").toLowerCase()
-
-      if (["successful", "success", "completed"].includes(status)) return true
-      if (["failed", "failure", "cancelled", "canceled", "rejected", "error"].includes(status)) {
-        throw new Error(statusData?.message || "The payment was declined or cancelled.")
-      }
-    }
-    return false
-  }
-
   const recordLipilaDonation = async (referenceId: string, donorName?: string) => {
     const recordRes = await fetch(`/api/campaigns/${campaign.id}/contribute-lipila`, {
       method: "POST",
@@ -216,6 +222,10 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     setLoading(true)
     setError("")
     setLipilaStage("prompting")
+    setPaymentTimeLeftMs(LIPILA_CARD_TIMEOUT_MS)
+    lipilaPollAbortRef.current?.abort()
+    const abort = new AbortController()
+    lipilaPollAbortRef.current = abort
 
     const referenceId = newReferenceId()
     const origin = typeof window !== "undefined" ? window.location.origin : ""
@@ -276,11 +286,16 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         description: "A secure payment page opened in a new tab. Enter your card details there.",
       })
 
-      const confirmed = await waitForConfirmation(referenceId, 60) // ~5 min
-      if (!confirmed) {
-        throw new Error(
-          "We didn't receive confirmation in time. If you completed the card payment, your donation will appear shortly.",
-        )
+      const outcome = await pollLipilaCollectionStatus(referenceId, {
+        pollIntervalMs: LIPILA_CARD_POLL_MS,
+        timeoutMs: LIPILA_CARD_TIMEOUT_MS,
+        signal: abort.signal,
+        onTimeLeft: setPaymentTimeLeftMs,
+      })
+
+      if (outcome === "cancelled") return
+      if (outcome === "timeout") {
+        throw new Error(LIPILA_TIMEOUT_MESSAGES.card)
       }
 
       await recordLipilaDonation(
@@ -294,10 +309,13 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       })
       completeDonation()
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
       setError(err instanceof Error ? err.message : "Card payment failed. Please try again.")
     } finally {
+      lipilaPollAbortRef.current = null
       setLoading(false)
       setLipilaStage("idle")
+      setPaymentTimeLeftMs(null)
     }
   }
 
@@ -305,6 +323,10 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     setLoading(true)
     setError("")
     setLipilaStage("prompting")
+    setPaymentTimeLeftMs(LIPILA_MOMO_TIMEOUT_MS)
+    lipilaPollAbortRef.current?.abort()
+    const abort = new AbortController()
+    lipilaPollAbortRef.current = abort
 
     const referenceId = newReferenceId()
 
@@ -335,14 +357,19 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       setLipilaStage("waiting")
       toast({
         title: "Check your phone",
-        description: `Approve the ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} payment prompt to complete your donation.`,
+        description: `Approve the ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} payment prompt within 3 minutes.`,
       })
 
-      const confirmed = await waitForConfirmation(referenceId, 30) // ~2.5 min
-      if (!confirmed) {
-        throw new Error(
-          "We didn't receive confirmation in time. If you approved the prompt, your donation will appear shortly.",
-        )
+      const outcome = await pollLipilaCollectionStatus(referenceId, {
+        pollIntervalMs: LIPILA_MOMO_POLL_MS,
+        timeoutMs: LIPILA_MOMO_TIMEOUT_MS,
+        signal: abort.signal,
+        onTimeLeft: setPaymentTimeLeftMs,
+      })
+
+      if (outcome === "cancelled") return
+      if (outcome === "timeout") {
+        throw new Error(LIPILA_TIMEOUT_MESSAGES.momo)
       }
 
       await recordLipilaDonation(
@@ -356,10 +383,13 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       })
       completeDonation()
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
       setError(err instanceof Error ? err.message : "Mobile money payment failed. Please try again.")
     } finally {
+      lipilaPollAbortRef.current = null
       setLoading(false)
       setLipilaStage("idle")
+      setPaymentTimeLeftMs(null)
     }
   }
 
@@ -537,11 +567,14 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             variant="ghost"
             size="sm"
             onClick={() => {
+              if (loading && lipilaStage === "waiting") {
+                cancelLipilaPayment()
+                return
+              }
               if (loading) return
               setError("")
               setStep("form")
             }}
-            disabled={loading}
             className="h-8 w-8 p-0"
           >
             <X className="h-4 w-4" />
@@ -568,6 +601,20 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               </div>
             )}
           </div>
+
+          {loading && lipilaStage === "waiting" && paymentTimeLeftMs !== null && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-2">
+              <p className="font-medium text-sm">
+                Enter your PIN on your phone — time left: {formatPaymentTimeLeft(paymentTimeLeftMs)}
+              </p>
+              <p className="text-xs text-amber-800">
+                If you ignore or miss the prompt, this payment will time out and no money is taken.
+              </p>
+              <Button type="button" variant="outline" size="sm" className="w-full" onClick={cancelLipilaPayment}>
+                Cancel payment
+              </Button>
+            </div>
+          )}
 
           {error && (
             <Alert variant="destructive">
@@ -607,7 +654,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
               <p className="font-medium mb-1">How it works:</p>
               <p>• Tap pay, then approve the prompt on your phone</p>
-              <p>• Enter your mobile money PIN to confirm</p>
+              <p>• Enter your mobile money PIN within 3 minutes</p>
               <p>• Keep this window open until it completes</p>
             </div>
             <p>Payments processed securely by Lipila</p>
@@ -626,11 +673,14 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             variant="ghost"
             size="sm"
             onClick={() => {
+              if (loading && lipilaStage === "waiting") {
+                cancelLipilaPayment()
+                return
+              }
               if (loading) return
               setError("")
               setStep("form")
             }}
-            disabled={loading}
             className="h-8 w-8 p-0"
           >
             <X className="h-4 w-4" />
@@ -657,6 +707,20 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               </div>
             )}
           </div>
+
+          {loading && lipilaStage === "waiting" && paymentTimeLeftMs !== null && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-2">
+              <p className="font-medium text-sm">
+                Complete checkout in the other tab — time left: {formatPaymentTimeLeft(paymentTimeLeftMs)}
+              </p>
+              <p className="text-xs text-amber-800">
+                If you close the payment page without paying, this will time out automatically.
+              </p>
+              <Button type="button" variant="outline" size="sm" className="w-full" onClick={cancelLipilaPayment}>
+                Cancel payment
+              </Button>
+            </div>
+          )}
 
           {error && (
             <Alert variant="destructive">
