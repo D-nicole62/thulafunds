@@ -66,7 +66,52 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const [guestName, setGuestName] = useState("")
   const [lipilaStage, setLipilaStage] = useState<"idle" | "prompting" | "waiting">("idle")
   const [paymentTimeLeftMs, setPaymentTimeLeftMs] = useState<number | null>(null)
+  const [momoNeedsNewPrompt, setMomoNeedsNewPrompt] = useState(false)
+  const [pendingMomoReferenceId, setPendingMomoReferenceId] = useState<string | null>(null)
   const lipilaPollAbortRef = useRef<AbortController | null>(null)
+  const momoCollectInFlightRef = useRef(false)
+
+  const endMomoPaymentSession = (message: string) => {
+    setError(message)
+    setMomoNeedsNewPrompt(true)
+  }
+
+  const sendMomoPrompt = () => {
+    if (loading || momoCollectInFlightRef.current) return
+    setError("")
+    setMomoNeedsNewPrompt(false)
+    setPendingMomoReferenceId(null)
+    void processLipilaPayment()
+  }
+
+  /** Record a Lipila payment that succeeded on the phone after the page timed out. */
+  const confirmMomoPaymentOnPhone = async () => {
+    const referenceId = pendingMomoReferenceId
+    if (!referenceId || loading) return
+    setLoading(true)
+    setError("")
+    try {
+      await recordLipilaDonation(
+        referenceId,
+        currentUser?.full_name || guestName.trim() || undefined,
+      )
+      setPendingMomoReferenceId(null)
+      setMomoNeedsNewPrompt(false)
+      toast({
+        title: "Donation recorded!",
+        description: `Your ${LIPILA_CURRENCY} donation to ${campaign.title} is now on the campaign.`,
+      })
+      completeDonation()
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not confirm this payment yet. If Lipila shows it as successful, try again in a minute.",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const cancelLipilaPayment = () => {
     lipilaPollAbortRef.current?.abort()
@@ -74,7 +119,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     setLoading(false)
     setLipilaStage("idle")
     setPaymentTimeLeftMs(null)
-    setError(LIPILA_TIMEOUT_MESSAGES.cancelled)
+    if (step === "lipila") {
+      endMomoPaymentSession(LIPILA_TIMEOUT_MESSAGES.cancelled)
+    } else {
+      setError(LIPILA_TIMEOUT_MESSAGES.cancelled)
+    }
   }
 
   useEffect(() => {
@@ -147,6 +196,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         return
       }
       setError("")
+      setMomoNeedsNewPrompt(false)
       setStep("lipila")
       return
     }
@@ -293,9 +343,12 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         onTimeLeft: setPaymentTimeLeftMs,
       })
 
-      if (outcome === "cancelled") return
-      if (outcome === "timeout") {
+      if (outcome.outcome === "cancelled") return
+      if (outcome.outcome === "timeout") {
         throw new Error(LIPILA_TIMEOUT_MESSAGES.card)
+      }
+      if (outcome.outcome === "failed") {
+        throw new Error(outcome.message)
       }
 
       await recordLipilaDonation(
@@ -320,6 +373,9 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   }
 
   const processLipilaPayment = async () => {
+    if (momoCollectInFlightRef.current) return
+    momoCollectInFlightRef.current = true
+
     setLoading(true)
     setError("")
     setLipilaStage("prompting")
@@ -329,6 +385,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
     lipilaPollAbortRef.current = abort
 
     const referenceId = newReferenceId()
+    setPendingMomoReferenceId(referenceId)
 
     try {
       const collectRes = await fetch("/api/lipila/collect", {
@@ -367,9 +424,15 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         onTimeLeft: setPaymentTimeLeftMs,
       })
 
-      if (outcome === "cancelled") return
-      if (outcome === "timeout") {
-        throw new Error(LIPILA_TIMEOUT_MESSAGES.momo)
+      if (outcome.outcome === "cancelled") return
+      if (outcome.outcome === "timeout") {
+        endMomoPaymentSession(LIPILA_TIMEOUT_MESSAGES.momo)
+        return
+      }
+      if (outcome.outcome === "failed") {
+        const declined = /cancel|declin|reject|fail/i.test(outcome.message)
+        endMomoPaymentSession(declined ? LIPILA_TIMEOUT_MESSAGES.momoDeclined : outcome.message)
+        return
       }
 
       await recordLipilaDonation(
@@ -377,6 +440,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
         currentUser?.full_name || guestName.trim() || undefined,
       )
 
+      setPendingMomoReferenceId(null)
+      setMomoNeedsNewPrompt(false)
       toast({
         title: "Donation received!",
         description: `Thank you for your ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} contribution.`,
@@ -384,8 +449,11 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       completeDonation()
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return
-      setError(err instanceof Error ? err.message : "Mobile money payment failed. Please try again.")
+      endMomoPaymentSession(
+        err instanceof Error ? err.message : "Mobile money payment failed. Please try again.",
+      )
     } finally {
+      momoCollectInFlightRef.current = false
       lipilaPollAbortRef.current = null
       setLoading(false)
       setLipilaStage("idle")
@@ -573,6 +641,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
               }
               if (loading) return
               setError("")
+              setMomoNeedsNewPrompt(false)
               setStep("form")
             }}
             className="h-8 w-8 p-0"
@@ -620,35 +689,52 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="font-medium">{error}</AlertDescription>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                {pendingMomoReferenceId && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={confirmMomoPaymentOnPhone}
+                    disabled={loading}
+                    className="flex-1"
+                  >
+                    I approved on my phone — confirm payment
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setError("")
-                    processLipilaPayment()
-                  }}
-                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={sendMomoPrompt}
+                  disabled={loading}
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground flex-1"
                 >
-                  Try Again
+                  Send new prompt
                 </Button>
               </div>
             </Alert>
           )}
 
-          <Button onClick={processLipilaPayment} disabled={loading} className="w-full" size="lg">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {lipilaStage === "waiting" ? "Waiting for approval..." : "Sending prompt..."}
-              </>
-            ) : (
-              <>
-                <Smartphone className="mr-2 h-4 w-4" />
-                Pay {LIPILA_CURRENCY} {Number(amount).toFixed(2)}
-              </>
-            )}
-          </Button>
+          {!momoNeedsNewPrompt && !error && (
+            <Button onClick={sendMomoPrompt} disabled={loading} className="w-full" size="lg">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {lipilaStage === "waiting" ? "Waiting for approval..." : "Sending prompt..."}
+                </>
+              ) : (
+                <>
+                  <Smartphone className="mr-2 h-4 w-4" />
+                  Pay {LIPILA_CURRENCY} {Number(amount).toFixed(2)}
+                </>
+              )}
+            </Button>
+          )}
+
+          {loading && momoNeedsNewPrompt === false && (
+            <p className="text-xs text-center text-muted-foreground">
+              Do not tap Pay again — wait for your phone or use Cancel payment.
+            </p>
+          )}
 
           <div className="text-xs text-muted-foreground text-center space-y-1">
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">

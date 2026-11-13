@@ -11,6 +11,7 @@ import {
   formatDonationAmount,
   isCampaignGoalReached,
 } from "@/lib/format-donation"
+import { campaignAcceptsLipilaDonations } from "@/lib/lipila/campaign-lipila"
 import type { CampaignProgressProps } from "@/types/campaign"
 
 export function CampaignProgress({
@@ -19,8 +20,7 @@ export function CampaignProgress({
   showDonorDetails = false,
 }: CampaignProgressProps) {
   const hasEscrow = Boolean(campaign.contract_address)
-  const isLipilaPrimary =
-    !hasEscrow && (!campaign.wallet_address || campaign.payment_method === "lipila")
+  const isLipilaPrimary = campaignAcceptsLipilaDonations(campaign)
   const donationsTotal = (campaign.donations ?? campaign.contributions ?? []).reduce(
     (sum, d) => sum + Number(d.amount ?? 0),
     0,

@@ -39,9 +39,19 @@ export function isLipilaSuccess(status?: string | null): boolean {
 
 export function isLipilaFailure(status?: string | null): boolean {
   if (!status) return false
-  return ["failed", "failure", "cancelled", "canceled", "rejected", "error", "expired", "timeout", "timedout"].includes(
-    status.toLowerCase().replace(/\s+/g, ""),
-  )
+  const normalized = status.toLowerCase().replace(/\s+/g, "")
+  return [
+    "failed",
+    "failure",
+    "cancelled",
+    "canceled",
+    "rejected",
+    "declined",
+    "error",
+    "expired",
+    "timeout",
+    "timedout",
+  ].includes(normalized)
 }
 
 /** Normalise a Zambian MSISDN to the 2609XXXXXXXX form Lipila expects. */

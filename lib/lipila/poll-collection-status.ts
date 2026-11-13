@@ -8,7 +8,11 @@ export const LIPILA_MOMO_TIMEOUT_MS = 60 * 1_000
 export const LIPILA_CARD_POLL_MS = 5_000
 export const LIPILA_CARD_TIMEOUT_MS = 3 * 60 * 1_000
 
-export type LipilaPollOutcome = "success" | "timeout" | "cancelled"
+export type LipilaPollResult =
+  | { outcome: "success" }
+  | { outcome: "timeout" }
+  | { outcome: "cancelled" }
+  | { outcome: "failed"; message: string }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -43,7 +47,7 @@ export async function pollLipilaCollectionStatus(
     signal?: AbortSignal
     onTimeLeft?: (remainingMs: number) => void
   },
-): Promise<LipilaPollOutcome> {
+): Promise<LipilaPollResult> {
   const deadline = Date.now() + options.timeoutMs
 
   const emitTimeLeft = () => {
@@ -53,15 +57,15 @@ export async function pollLipilaCollectionStatus(
   emitTimeLeft()
 
   while (Date.now() < deadline) {
-    if (options.signal?.aborted) return "cancelled"
+    if (options.signal?.aborted) return { outcome: "cancelled" }
 
     try {
       await sleep(options.pollIntervalMs, options.signal)
     } catch {
-      return "cancelled"
+      return { outcome: "cancelled" }
     }
 
-    if (options.signal?.aborted) return "cancelled"
+    if (options.signal?.aborted) return { outcome: "cancelled" }
 
     emitTimeLeft()
 
@@ -72,22 +76,27 @@ export async function pollLipilaCollectionStatus(
     const statusData = await statusRes.json().catch(() => ({}))
     const status = String(statusData?.status ?? "")
 
-    if (isLipilaSuccess(status)) return "success"
+    if (isLipilaSuccess(status)) return { outcome: "success" }
     if (isLipilaFailure(status)) {
-      throw new Error(
-        statusData?.message ||
+      return {
+        outcome: "failed",
+        message:
+          statusData?.message ||
           "The payment was not completed. If you did not enter your PIN or approve the prompt, try again.",
-      )
+      }
     }
   }
 
-  return "timeout"
+  return { outcome: "timeout" }
 }
 
 export const LIPILA_TIMEOUT_MESSAGES = {
   momo:
-    "Payment timed out. We did not receive your mobile money approval or PIN in time. If you did not approve the prompt, no money was taken. Tap Try Again to send a new prompt.",
+    "Payment timed out on this page. If you already approved on your phone, tap 'I approved on my phone — confirm payment'. Otherwise no money was taken unless you entered your PIN.",
+  momoDeclined:
+    "The payment was cancelled or declined on your phone. No money was taken. Tap 'Send new prompt' only when you want to try again.",
   card:
     "Payment timed out. We did not confirm your card payment in time. If you did not finish checkout, no charge was made. Try again or start a new payment.",
-  cancelled: "Payment cancelled. You can close this window or try again when ready.",
+  cancelled:
+    "Payment stopped on this page. Your phone will not be prompted again until you tap 'Send new prompt'.",
 } as const
