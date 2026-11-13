@@ -357,7 +357,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
       setLipilaStage("waiting")
       toast({
         title: "Check your phone",
-        description: `Approve the ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} payment prompt within 3 minutes.`,
+        description: `Approve the ${LIPILA_CURRENCY} ${Number(amount).toFixed(2)} payment prompt within 60 seconds.`,
       })
 
       const outcome = await pollLipilaCollectionStatus(referenceId, {
@@ -654,7 +654,7 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
               <p className="font-medium mb-1">How it works:</p>
               <p>• Tap pay, then approve the prompt on your phone</p>
-              <p>• Enter your mobile money PIN within 3 minutes</p>
+              <p>• Enter your mobile money PIN within 60 seconds</p>
               <p>• Keep this window open until it completes</p>
             </div>
             <p>Payments processed securely by Lipila</p>

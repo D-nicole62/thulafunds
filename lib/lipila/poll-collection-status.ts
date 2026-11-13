@@ -3,10 +3,10 @@ import { isLipilaFailure, isLipilaSuccess } from "@/lib/lipila/config"
 /** Poll every 3s — mobile money PIN prompts should resolve quickly or time out. */
 export const LIPILA_MOMO_POLL_MS = 3_000
 /** How long to wait for the payer to enter their PIN on the phone. */
-export const LIPILA_MOMO_TIMEOUT_MS = 3 * 60 * 1_000
+export const LIPILA_MOMO_TIMEOUT_MS = 60 * 1_000
 
 export const LIPILA_CARD_POLL_MS = 5_000
-export const LIPILA_CARD_TIMEOUT_MS = 8 * 60 * 1_000
+export const LIPILA_CARD_TIMEOUT_MS = 3 * 60 * 1_000
 
 export type LipilaPollOutcome = "success" | "timeout" | "cancelled"
 
