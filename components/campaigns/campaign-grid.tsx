@@ -6,10 +6,9 @@ import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
 import {
   campaignProgressPercent,
-  formatDonationAmount,
+  formatCampaignAmount,
   isCampaignGoalReached,
 } from "@/lib/format-donation"
-import { campaignAcceptsLipilaDonations } from "@/lib/lipila/campaign-lipila"
 
 interface Campaign {
   id: string
@@ -52,11 +51,9 @@ export function CampaignGrid({ campaigns }: CampaignGridProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {campaigns.map((campaign) => {
-        const isLipila = campaignAcceptsLipilaDonations(campaign)
-        const currency = isLipila ? "ZMW" : "USD"
         const progress = campaignProgressPercent(campaign.current_amount, campaign.goal_amount)
         const isCompleted = isCampaignGoalReached(campaign.current_amount, campaign.goal_amount)
-        const formatAmount = (amount: number) => formatDonationAmount(amount, currency)
+        const formatAmount = (amount: number) => formatCampaignAmount(amount)
 
         return (
           <Link key={campaign.id} href={`/campaigns/${campaign.id}`}>

@@ -413,7 +413,7 @@ export function CampaignCreateForm() {
               <div className="space-y-2">
                 <Label htmlFor="goalAmount" className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
-                  Funding Goal (USDC) *
+                  Funding Goal ({LIPILA_CURRENCY}) *
                 </Label>
                 <Input
                   id="goalAmount"
@@ -427,8 +427,8 @@ export function CampaignCreateForm() {
                 />
                 <p className="text-xs text-muted-foreground">
                   {escrowEnabled
-                    ? "Goal is enforced on-chain in the Soroban escrow contract"
-                    : "Set a realistic goal in USDC. Contributors can send payments directly to your wallet"}
+                    ? "Goal is enforced on-chain in the Soroban escrow contract (amounts on the site are shown in Kwacha)"
+                    : `Set a realistic goal in ${LIPILA_CURRENCY}. Most donors pay via Lipila mobile money or card`}
                 </p>
               </div>
 

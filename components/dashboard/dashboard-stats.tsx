@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, Target, TrendingUp } from "lucide-react"
 import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
 import { asNumber } from "@/lib/db/helpers"
-import { formatDonationAmount, isCampaignGoalReached } from "@/lib/format-donation"
+import { formatCampaignAmount, isCampaignGoalReached } from "@/lib/format-donation"
 
 interface DashboardStatsProps {
   userId: string
@@ -24,13 +24,10 @@ export async function DashboardStats({ userId }: DashboardStatsProps) {
     const fundedCampaigns = (campaigns ?? []).filter((c) =>
       isCampaignGoalReached(asNumber(c.current_amount), asNumber(c.goal_amount)),
     ).length
-    const primaryCurrency =
-      campaigns?.find((c) => c.payment_method === "lipila")?.payment_method === "lipila" ? "ZMW" : "USD"
-
     const stats = [
       {
         title: "Total Raised",
-        value: formatDonationAmount(totalRaised, primaryCurrency),
+        value: formatCampaignAmount(totalRaised),
         description: "Across your campaigns",
         icon: DollarSign,
       },

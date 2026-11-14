@@ -1,10 +1,20 @@
+/** Primary display currency for campaigns and Lipila (Zambian Kwacha). */
+export const DISPLAY_CURRENCY = (
+  process.env.NEXT_PUBLIC_LIPILA_CURRENCY || "ZMW"
+).toUpperCase()
+
+/** Format amounts on campaign cards, progress bars, and dashboards. */
+export function formatCampaignAmount(amount: number | string): string {
+  return formatDonationAmount(amount, DISPLAY_CURRENCY)
+}
+
 /** Format a donation amount with its stored currency (ZMW, USDC, USD, etc.). */
 export function formatDonationAmount(
   amount: number | string,
   currency?: string | null,
 ): string {
   const value = Number(amount ?? 0)
-  const code = (currency || "USD").toUpperCase()
+  const code = (currency || DISPLAY_CURRENCY).toUpperCase()
 
   try {
     return new Intl.NumberFormat(code === "ZMW" ? "en-ZM" : "en-US", {

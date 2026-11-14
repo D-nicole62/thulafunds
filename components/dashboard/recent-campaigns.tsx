@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Plus, Eye, Edit } from "lucide-react"
 import { DatabaseErrorCard } from "@/components/dashboard/database-error-card"
+import { formatCampaignAmount } from "@/lib/format-donation"
 
 interface RecentCampaignsProps {
   userId: string
@@ -86,10 +87,10 @@ export async function RecentCampaigns({ userId }: RecentCampaignsProps) {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">
-                            ${Number(campaign.current_amount || 0).toLocaleString()} raised
+                            {formatCampaignAmount(campaign.current_amount ?? 0)} raised
                           </span>
                           <span className="font-medium">
-                            ${Number(campaign.goal_amount || 0).toLocaleString()} goal
+                            {formatCampaignAmount(campaign.goal_amount ?? 0)} goal
                           </span>
                         </div>
                         <Progress value={Math.min(progress, 100)} className="h-2" />

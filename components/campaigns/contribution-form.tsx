@@ -30,6 +30,7 @@ import {
   Coins
 } from "lucide-react"
 import type { ContributionFormProps } from "@/types/campaign"
+import { formatDonationAmount } from "@/lib/format-donation"
 import { lipilaReferenceData } from "@/lib/lipila/reference-data"
 import {
   formatPaymentTimeLeft,
@@ -155,14 +156,8 @@ export function ContributionForm({ campaign, currentUser, onCloseAction }: Contr
   const hasCryptoWallet = Boolean(campaign.wallet_address)
   const canPayCrypto = hasEscrow || hasCryptoWallet
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) =>
+    formatDonationAmount(amount, LIPILA_CURRENCY)
 
   const handleConnectWallet = async () => {
     try {

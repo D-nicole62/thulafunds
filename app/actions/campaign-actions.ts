@@ -100,7 +100,7 @@ export async function createCampaignAction(formData: FormData) {
 
     const goalAmountNum = Number.parseFloat(goalAmount)
     if (isNaN(goalAmountNum) || goalAmountNum < 100 || goalAmountNum > 1000000) {
-      return { error: "Goal amount must be between $100 and $1,000,000", success: false }
+      return { error: "Goal amount must be between K100 and K1,000,000", success: false }
     }
 
     let imageUrl = ""
@@ -223,7 +223,7 @@ export async function updateCampaign(campaignId: string, formData: FormData) {
 
     const goalAmountNum = Number.parseFloat(goalAmount)
     if (isNaN(goalAmountNum) || goalAmountNum < 100 || goalAmountNum > 1000000) {
-      return { success: false, error: "Goal amount must be between $100 and $1,000,000" }
+      return { success: false, error: "Goal amount must be between K100 and K1,000,000" }
     }
 
     let imageUrl = existingImageUrl || ""

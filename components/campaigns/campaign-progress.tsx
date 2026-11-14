@@ -8,6 +8,8 @@ import { CheckCircle, Heart, Loader2, Link2 } from "lucide-react"
 import { useCampaignBalance } from "@/hooks/use-campaign-balance"
 import {
   campaignProgressPercent,
+  DISPLAY_CURRENCY,
+  formatCampaignAmount,
   formatDonationAmount,
   isCampaignGoalReached,
 } from "@/lib/format-donation"
@@ -28,9 +30,10 @@ export function CampaignProgress({
   const fallbackRaised = isLipilaPrimary
     ? Math.max(campaign.current_amount, donationsTotal)
     : campaign.current_amount
-  const currency = isLipilaPrimary
-    ? campaign.donations?.[0]?.currency ?? campaign.contributions?.[0]?.currency ?? "ZMW"
-    : "USD"
+  const currency =
+    campaign.donations?.[0]?.currency ??
+    campaign.contributions?.[0]?.currency ??
+    DISPLAY_CURRENCY
 
   const {
     balance: raised,
@@ -53,9 +56,12 @@ export function CampaignProgress({
   const daysLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
 
   const donationsCount = campaign.donations?.length || campaign.contributions?.length || 0
-  const raisedLabel = hasEscrow ? "Raised (Soroban escrow)" : isLipilaPrimary ? "Raised (Lipila)" : "Raised"
-  const formatAmount = (amount: number) =>
-    isLipilaPrimary ? formatDonationAmount(amount, currency) : formatDonationAmount(amount, "USD")
+  const raisedLabel = hasEscrow
+    ? "Raised (Soroban escrow)"
+    : isLipilaPrimary
+      ? "Raised (Lipila)"
+      : "Raised"
+  const formatAmount = (amount: number) => formatDonationAmount(amount, currency)
 
   return (
     <Card>

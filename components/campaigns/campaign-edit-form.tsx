@@ -153,7 +153,7 @@ export function CampaignEditForm({ campaign }: CampaignEditFormProps) {
             <div className="space-y-2">
               <Label htmlFor="goalAmount" className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
-                Funding Goal (USDC) *
+                Funding Goal (ZMW) *
               </Label>
               <Input
                 id="goalAmount"

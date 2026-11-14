@@ -56,7 +56,7 @@ export async function insertDonation(row: DonationInsert): Promise<Donation> {
     tx_hash: row.tx_hash,
     payment_method: row.payment_method ?? "soroban_escrow",
     status: row.status ?? "completed",
-    currency: row.currency ?? "USDC",
+      currency: row.currency ?? "ZMW",
   }
 
   const withDonorName = { ...baseRow, donor_name: row.donor_name ?? null }
